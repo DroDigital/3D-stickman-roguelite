@@ -85,6 +85,7 @@ export class UI {
   showHud(on) { this.hudEl.classList.toggle('hidden', !on); }
   showPause(on) { this.el.pause.classList.toggle('hidden', !on); }
   showSettings(on) { this.el.settings.classList.toggle('hidden', !on); }
+  get settingsOpen() { return !this.el.settings.classList.contains('hidden'); }
 
   title(name, sub, tag) {
     const t = this.el.titleCard;

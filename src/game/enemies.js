@@ -156,7 +156,7 @@ export const ENEMY_TYPES = {
           e.anim.play(CLIPS.cast, 1);
           const p = game.player;
           const lead = 0.6;
-          game.addHazard({ x: p.x + p.vx * lead, z: p.z + p.vz * lead, r: 2.3, t: 1.3, dmg: e.dmg, kind: 'pillar', owner: 'enemy', color: [0.75, 0.3, 1] });
+          game.addHazard({ x: p.x + p.vx * lead, z: p.z + p.vz * lead, r: 2.3, t: 1.3, dmg: e.dmg, kind: 'pillar', owner: 'enemy', color: [0.75, 0.3, 1], src: e });
         }
       } else { e.mvx = e.mvz = 0; }
     },

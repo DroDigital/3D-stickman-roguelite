@@ -666,7 +666,14 @@ export class Game {
       return;
     }
     if (this.state === 'play' && input.consume('pause')) { this.pause(); return; }
-    if (this.state === 'paused') { if (input.consume('pause')) this.resume(); return; }
+    if (this.state === 'paused') {
+      // the pause key closes an open settings panel first, keeping the game paused
+      if (input.consume('pause')) {
+        if (this.ui.settingsOpen) this.ui.showSettings(false);
+        else this.resume();
+      }
+      return;
+    }
     if (this.state === 'levelup') {
       for (const [k, i] of [['pick1', 0], ['pick2', 1], ['pick3', 2], ['pick4', 3]]) if (input.consume(k)) this.ui.pickIndex(i);
       if (input.consume('reroll')) this.ui.reroll();
@@ -1006,6 +1013,7 @@ export class Game {
 
   resume() {
     this.state = 'play';
+    this.ui.showSettings(false);
     this.ui.showPause(false);
     this.input.requestLock();
   }

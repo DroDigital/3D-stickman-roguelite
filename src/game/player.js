@@ -197,6 +197,23 @@ export class Player {
   }
 
   // ------------------------------------------------------------ update
+  _clipHits() {
+    if (!this.clip) return [];
+    return [this.clip.hitT, this.clip.hitT2].filter((v) => v !== undefined);
+  }
+
+  /** Trigger every hit threshold the active strike animation has passed. */
+  _resolveHits() {
+    const s = this.state;
+    if (s !== 'attack' && s !== 'counter' && s !== 'finisher' && s !== 'ult') return;
+    const hits = this._clipHits();
+    const p = this.anim.progress;
+    while (this.hitDone < hits.length && p >= hits[this.hitDone]) {
+      this.game.playerStrike(this, this.move, this.hitDone);
+      this.hitDone++;
+    }
+  }
+
   update(dt, input) {
     const g = this.game;
     const st = this.stats;
@@ -210,8 +227,12 @@ export class Player {
     const mx = mv[0], mz = mv[1];
     const moving = Math.hypot(mx, mz) > 0.1;
 
-    // buffered actions
-    const canAct = this.state === 'free' || (this.state === 'attack' && this.anim.progress > (this.clip?.hitT ?? 0.5) + 0.08) || this.state === 'hurt' && this.stateT < 0.08;
+    // land any hit thresholds the current strike has already crossed before a follow-up can replace it
+    this._resolveHits();
+    // buffered actions: an attack may only be recovery-cancelled once all of its hits have resolved
+    const hits = this._clipHits();
+    const attackDone = this.state === 'attack' && this.hitDone >= hits.length && this.anim.progress > (hits.length ? hits[hits.length - 1] : 0.5) + 0.08;
+    const canAct = this.state === 'free' || attackDone || this.state === 'hurt' && this.stateT < 0.08;
     const canDodge = this.state !== 'dodge' && this.state !== 'finisher' && this.state !== 'ult' && this.state !== 'counter';
     if (input.consume('dodge') && canDodge) this.tryDodge(mx, mz);
     else if (input.peek('counter') && this.state !== 'dodge' && this.state !== 'counter' && this.state !== 'ult') {
@@ -265,11 +286,7 @@ export class Player {
         const push = p < (this.clip.hitT || 0.4) ? 2.2 : 0.3;
         wantVX = Math.sin(this.yaw) * push + mx * 1.2;
         wantVZ = Math.cos(this.yaw) * push + mz * 1.2;
-        const hits = [this.clip.hitT, this.clip.hitT2].filter((v) => v !== undefined);
-        while (this.hitDone < hits.length && p >= hits[this.hitDone]) {
-          g.playerStrike(this, this.move, this.hitDone);
-          this.hitDone++;
-        }
+        this._resolveHits();
         if (!this.anim.playing || this.stateT <= -0.05) {
           this.state = 'free';
           this.comboWindow = 0.55;
