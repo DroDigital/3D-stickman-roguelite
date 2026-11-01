@@ -23,8 +23,14 @@ http.createServer((req, res) => {
     res.writeHead(400).end('Bad request');
     return;
   }
-  let file = path.normalize(path.join(root, url === '/' ? 'index.html' : url));
-  if (!file.startsWith(root)) {
+  // null bytes make fs APIs throw synchronously, which would take the whole server down
+  if (url.includes('\0')) {
+    res.writeHead(400).end('Bad request');
+    return;
+  }
+  const file = path.resolve(root, '.' + (url === '/' ? '/index.html' : url));
+  // require a path-separator boundary so sibling directories sharing the root's name prefix are refused
+  if (file !== root && !file.startsWith(root + path.sep)) {
     res.writeHead(403).end();
     return;
   }
