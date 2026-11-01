@@ -202,3 +202,16 @@ test('legged locomotion keeps feet planted near the ground', () => {
     }
   }
 });
+
+test('loot containers, obelisks and the rift are never placed inside indestructible props', () => {
+  for (const dim of DIMENSIONS) {
+    for (const seed of [185, 1, 77, 4242, 90210]) {
+      for (const depth of [0, 2]) {
+        const w = new World(dim, seed, 'open', stubRenderer(), depth);
+        for (const c of w.chests) assert.ok(w.isClear(c.x, c.z, 1.8), `${dim.id} seed ${seed} chest at ${c.x},${c.z}`);
+        for (const o of w.obelisks) assert.ok(w.isClear(o.x, o.z, 3), `${dim.id} seed ${seed} obelisk`);
+        assert.ok(w.isClear(w.portalSpot.x, w.portalSpot.z, 4), `${dim.id} seed ${seed} rift`);
+      }
+    }
+  }
+});

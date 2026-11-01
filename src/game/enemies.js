@@ -613,7 +613,8 @@ export class Enemy {
     this.hp -= info.dmg;
     this.flash = 1;
     this.lastHit = game.time;
-    const poise = this.def.poise || this.boss;
+    // elites keep their poise: only heavy hits and counters break them
+    const poise = this.def.poise || this.boss || this.elite;
     if (!this.def.stationary && !this.boss) {
       const kbm = poise ? 0.25 : 1;
       this.kbx += info.dirX * info.kb * kbm;

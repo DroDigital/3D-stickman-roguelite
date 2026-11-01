@@ -378,16 +378,28 @@ export class World {
     }
   }
 
-  _farPoint(rng, minR, maxR, avoid = []) {
-    for (let tries = 0; tries < 60; tries++) {
+  /** True when no collider sits within `clearance` metres of (x, z) (measured to the collider's edge). */
+  isClear(x, z, clearance) {
+    let clear = true;
+    this.colliders.query(x, z, clearance + 6, (c) => {
+      if (clear && c.alive && Math.hypot(c.x - x, c.z - z) - c.r < clearance) clear = false;
+    });
+    return clear;
+  }
+
+  _farPoint(rng, minR, maxR, avoid = [], clearance = 2) {
+    for (let tries = 0; tries < 200; tries++) {
       const a = rng.next() * TAU;
       const r = rng.range(minR, maxR);
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
-      if (this.normalY(x, z) < 0.85) continue;
-      if (avoid.some((p) => Math.hypot(p.x - x, p.z - z) < 30)) continue;
+      if (!this.isClear(x, z, clearance)) continue;
+      // relax slope / spacing preferences once strict sampling keeps failing
+      if (tries < 80 && this.normalY(x, z) < 0.85) continue;
+      if (tries < 120 && avoid.some((p) => Math.hypot(p.x - x, p.z - z) < 30)) continue;
       return { x, z };
     }
-    return { x: rng.range(-minR, minR), z: rng.range(-minR, minR) };
+    // the spawn clearing never holds props, so it is always reachable
+    return { x: rng.range(-6, 6), z: rng.range(-6, 6) };
   }
 
   _populateOpen() {
@@ -396,18 +408,18 @@ export class World {
     // loot containers
     const nChests = 16 + Math.min(8, this.depth * 2);
     for (let i = 0; i < nChests; i++) {
-      const p = this._farPoint(rng, 14, this.playRadius - 6);
+      const p = this._farPoint(rng, 14, this.playRadius - 6, [], 1.8);
       const tier = rng.chance(0.08 + this.depth * 0.02) ? 2 : rng.chance(0.3) ? 1 : 0;
       this.chests.push({ x: p.x, z: p.z, y: this.height(p.x, p.z), tier, yaw: rng.next() * TAU, opened: false, openT: 0, bob: rng.next() * TAU });
     }
     // obelisk objectives
     const avoid = [];
     for (let i = 0; i < 3; i++) {
-      const p = this._farPoint(rng, 40, this.playRadius - 15, avoid);
+      const p = this._farPoint(rng, 40, this.playRadius - 15, avoid, 3);
       avoid.push(p);
       this.obelisks.push({ x: p.x, z: p.z, y: this.height(p.x, p.z), charge: 0, done: false, active: false, pulse: 0 });
     }
-    this.portalSpot = this._farPoint(rng, 55, this.playRadius - 12, avoid);
+    this.portalSpot = this._farPoint(rng, 55, this.playRadius - 12, avoid, 4);
   }
 
   _populateArena() {

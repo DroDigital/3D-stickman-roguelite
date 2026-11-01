@@ -255,7 +255,7 @@ export class UI {
       else obj = `Rift opens in <b>${fmtTime(Math.max(0, g.portalTimer))}</b> · Obelisks <b>${done}/3</b>`;
       if (g.activeObelisk) obj += ` · <span class="good">Awakening ${Math.floor(g.activeObelisk.charge * 100)}%</span>`;
     } else if (g.boss) obj = 'Destroy the guardian';
-    else if (g.world.exitPortal) obj = '<span class="good">Step through the rift to descend deeper</span>';
+    else if (g.world.exitPortal) obj = g.world.exitPortal.armed ? '<span class="good">Step through the rift to descend deeper</span>' : '<span class="good">Gather the spoils — the rift is stabilising</span>';
     else obj = 'The sanctum trembles...';
     if (obj !== this._lastObj) { e.objective.innerHTML = obj; this._lastObj = obj; }
     // combo

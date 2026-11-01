@@ -322,6 +322,11 @@ export class Game {
 
   killEnemy(e, info) {
     if (!e.alive) return;
+    // a lethal interruption must be at least as effective as a stagger: drop the pending windup attack
+    if (e.state === 'windup') {
+      this.cancelHazardsOf(e);
+      if (e.def.onInterrupt) e.def.onInterrupt(e);
+    }
     e.alive = false;
     const p = this.player;
     const isHuman = !!e.anim;
@@ -912,8 +917,14 @@ export class Game {
     const W = this.world;
     const p = this.player;
     if (this.mode !== 'open') {
-      if (W.exitPortal && Math.hypot(p.x - W.exitPortal.x, p.z - W.exitPortal.z) < 2.6 && this.state === 'play') {
-        this.transitionTo(() => this.enterDimension(this.depth + 1, 'open'));
+      const ex = W.exitPortal;
+      if (ex && this.state === 'play') {
+        const d = Math.hypot(p.x - ex.x, p.z - ex.z);
+        // arm only after the boss loot has had time to fly in and the player has stepped clear of the portal,
+        // so a boss dying on top of the exit never forces an instant descent
+        ex.age = (ex.age || 0) + dt;
+        if (!ex.armed && ex.age > 3 && d > 3.4) ex.armed = true;
+        if (ex.armed && d < 2.6) this.transitionTo(() => this.enterDimension(this.depth + 1, 'open'));
       }
       return;
     }
