@@ -30,6 +30,7 @@ const shepherd = {
     e.phase2 = false;
     e.name = game.dim.id === 'flesh' ? 'The Flayed Shepherd' : 'The Hollow Shepherd';
   },
+  onInterrupt(e) { e.doSlam = false; e.summon = false; },
   think(e, dt, game) {
     if (!e.phase2 && e.hp < e.maxHp * 0.5) {
       e.phase2 = true;
@@ -179,6 +180,7 @@ const leviathan = {
     for (let i = 0; i < SEGS; i++) { e.pts[i * 3] = e.x; e.pts[i * 3 + 1] = e.hy - i * 0.5; e.pts[i * 3 + 2] = e.z; }
     e.mode = 'submerged';
     e.modeT = 2;
+    e.atk = null;
     e.breaches = 0;
     e.jaw = 0;
     e.phase2 = false;
@@ -256,8 +258,10 @@ const leviathan = {
     e.surfaced = e.hy > ground - 0.5;
     e.untargetable = !e.surfaced;
   },
+  onInterrupt(e) { e.atk = null; },
   strike(e, game) {
     const p = game.player;
+    if (!e.atk) { e.recover(0.5); return; }
     if (e.atk === 'bite') {
       const dx = p.x - e.hx, dz = p.z - e.hz, d = Math.hypot(dx, dz) || 1;
       e.hvx = (dx / d) * 24; e.hvz = (dz / d) * 24;
@@ -456,6 +460,7 @@ const oculus = {
   hitTest(e, x, z, r) {
     return Math.hypot(e.x - x, e.z - z) < r + 3.1;
   },
+  onInterrupt(e) { e.dive = false; e.burst = 0; },
   animate(e, dt, game) {
     const P = e.pts;
     const y = e.y + e.hover + Math.sin(game.time * 1.2) * 0.4 - (e.state === 'stagger' ? 2.2 : 0);

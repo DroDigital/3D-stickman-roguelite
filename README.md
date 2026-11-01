@@ -32,7 +32,7 @@ npm run smoke
 | Counter (cyan sigil) | Q / F | B |
 | Rend Reality (ultimate) | R | RB |
 | Open loot container | E | LB |
-| Pick upgrade / reroll | 1 2 3 / X | D-pad |
+| Pick upgrade / reroll | 1 2 3 (4) / X | D-pad up/down/left/right / Back |
 | Pause | Esc / P | Start |
 
 ## How a run works

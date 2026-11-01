@@ -113,7 +113,9 @@ export class Player {
       clip = CLIPS[moveName];
       this.comboIdx = 0;
     } else {
-      if (this.comboWindow <= 0) this.comboIdx = 0;
+      // chaining from an active strike (recovery-cancel) keeps the combo going
+      const chaining = this.state === 'attack' || this.state === 'lunge';
+      if (this.comboWindow <= 0 && !chaining) this.comboIdx = 0;
       moveName = w.light[this.comboIdx % w.light.length];
       clip = CLIPS[moveName];
       this.comboIdx++;

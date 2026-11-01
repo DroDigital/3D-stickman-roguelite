@@ -212,8 +212,10 @@ export const ENEMY_TYPES = {
     think(e, dt, game) {
       if (e.state === 'chase') {
         const t = chase(e, game, e.speed, 1.2);
-        if (t.d < 6.5 && t.d > 2 && e.atkCd <= 0) {
-          e.windup(0.5, true);
+        if (e.atkCd <= 0 && t.d < 6.5) {
+          // pounce from range, snap with a quick bite when already close
+          e.closeBite = t.d <= 2;
+          e.windup(e.closeBite ? 0.35 : 0.5, true);
         }
       } else if (e.state === 'attack') {
         // mid-leap: keep momentum, bite on contact
@@ -221,7 +223,15 @@ export const ENEMY_TYPES = {
         if (!e.bit && t.d < 1.3) { e.bit = true; game.damagePlayer(e.dmg, e); }
       } else { e.mvx = e.mvz = 0; }
     },
+    onInterrupt(e) { e.closeBite = false; },
     strike(e, game) {
+      if (e.closeBite) {
+        e.closeBite = false;
+        if (inFront(e, game, 2.0, 140)) game.damagePlayer(e.dmg, e);
+        e.recover(0.5);
+        e.atkCd = 1.4 + Math.random();
+        return;
+      }
       const t = toPlayer(e, game);
       e.state = 'attack';
       e.stateT = 0.38;
@@ -540,6 +550,8 @@ export class Enemy {
     this.telegraph = false;
     this.counterable = false;
     this.onAttackEnd = null;
+    // drop any attack that was queued for the end of the interrupted windup
+    if (this.def.onInterrupt) this.def.onInterrupt(this);
     if (this.anim) this.anim.play(CLIPS.stagger, CLIPS.stagger.dur / Math.max(0.3, time));
   }
 

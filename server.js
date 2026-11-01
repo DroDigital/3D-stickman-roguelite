@@ -16,7 +16,13 @@ const types = {
 };
 
 http.createServer((req, res) => {
-  const url = decodeURIComponent((req.url || '/').split('?')[0]);
+  let url;
+  try {
+    url = decodeURIComponent((req.url || '/').split('?')[0]);
+  } catch {
+    res.writeHead(400).end('Bad request');
+    return;
+  }
   let file = path.normalize(path.join(root, url === '/' ? 'index.html' : url));
   if (!file.startsWith(root)) {
     res.writeHead(403).end();

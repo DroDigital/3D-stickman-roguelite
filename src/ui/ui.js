@@ -404,7 +404,15 @@ export class UI {
     if (off) {
       // clamp to screen edge along direction from center
       let dx = x - W / 2, dy = y - H / 2;
-      if (!on) { dx = -dx; dy = -dy; }
+      if (!on) {
+        // projection failed (behind the camera): derive the direction from the camera basis instead
+        const R = g.R, cp = R.camPos;
+        const rx = m.x - cp[0], ry = m.y - cp[1], rz = m.z - cp[2];
+        dx = rx * R.camRight[0] + ry * R.camRight[1] + rz * R.camRight[2];
+        dy = -(rx * R.camUp[0] + ry * R.camUp[1] + rz * R.camUp[2]);
+        // behind the camera: bias toward the bottom edge so it reads as "turn around"
+        dy = Math.max(dy, Math.abs(dx) * 0.25 + 1);
+      }
       const s = Math.min((W / 2 - margin) / Math.abs(dx || 1e-3), (H / 2 - margin) / Math.abs(dy || 1e-3));
       x = W / 2 + dx * s; y = H / 2 + dy * s;
     }

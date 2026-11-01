@@ -29,7 +29,7 @@ export class Input {
       interact: ['KeyE'],
       ultimate: ['KeyR'],
       pause: ['Escape', 'KeyP'],
-      pick1: ['Digit1'], pick2: ['Digit2'], pick3: ['Digit3'],
+      pick1: ['Digit1'], pick2: ['Digit2'], pick3: ['Digit3'], pick4: ['Digit4'],
       reroll: ['KeyX'],
     };
     this.codeToActions = new Map();
@@ -151,7 +151,7 @@ export class Input {
     this.padMove[1] = -dz(pad.axes[1] || 0);
     this.padLook[0] = dz(pad.axes[2] || 0) * 3.2 * dt;
     this.padLook[1] = dz(pad.axes[3] || 0) * 2.4 * dt;
-    const map = { 0: 'dodge', 2: 'attack', 3: 'heavy', 1: 'counter', 4: 'interact', 5: 'ultimate', 9: 'pause', 12: 'pick1', 13: 'pick2', 14: 'pick3', 15: 'reroll' };
+    const map = { 0: 'dodge', 2: 'attack', 3: 'heavy', 1: 'counter', 4: 'interact', 5: 'ultimate', 9: 'pause', 12: 'pick1', 13: 'pick2', 14: 'pick3', 15: 'pick4', 8: 'reroll' };
     this.padHeld = {};
     for (const [idx, action] of Object.entries(map)) {
       const b = pad.buttons[idx];

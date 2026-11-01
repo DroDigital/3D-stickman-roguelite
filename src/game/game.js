@@ -668,7 +668,7 @@ export class Game {
     if (this.state === 'play' && input.consume('pause')) { this.pause(); return; }
     if (this.state === 'paused') { if (input.consume('pause')) this.resume(); return; }
     if (this.state === 'levelup') {
-      for (const [k, i] of [['pick1', 0], ['pick2', 1], ['pick3', 2]]) if (input.consume(k)) this.ui.pickIndex(i);
+      for (const [k, i] of [['pick1', 0], ['pick2', 1], ['pick3', 2], ['pick4', 3]]) if (input.consume(k)) this.ui.pickIndex(i);
       if (input.consume('reroll')) this.ui.reroll();
       return;
     }
@@ -861,9 +861,12 @@ export class Game {
       const d = Math.hypot(dx, dy, dz);
       if (o.t > 0.4 && (d < mag || o.magnet || this.mode === 'arena' && !this.boss)) o.magnet = true;
       if (o.magnet && p.alive) {
-        const sp = 8 + o.t * 14;
-        o.vx = (dx / d) * sp; o.vy = (dy / d) * sp; o.vz = (dz / d) * sp;
-        if (d < 0.8) {
+        const sp = Math.min(8 + o.t * 14, 60);
+        // never step past the player: collect when this frame's move would reach or cross them
+        const reach = d < 0.8 || sp * dt >= d - 0.8;
+        const step = Math.min(sp, d / Math.max(dt, 1e-4));
+        o.vx = (dx / d) * step; o.vy = (dy / d) * step; o.vz = (dz / d) * step;
+        if (reach) {
           o.dead = true;
           if (o.kind === 'xp') { this.gainXp(o.value); this.audio.play('pickup'); }
           else if (o.kind === 'shard') { p.shards += o.value; this.audio.play('coin'); }
