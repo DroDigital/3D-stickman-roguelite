@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Abyssal Stride</title>
+  <meta name="description" content="A retro 3D stickman freeflow-combat roguelite in a cosmic horror world." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Cormorant+Garamond:ital,wght@0,500;1,500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <canvas id="overlay"></canvas>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div class="hud-tl">
+      <div class="bar hp"><div id="hp-fill"></div><span id="hp-text"></span></div>
+      <div class="bar ult"><div id="ult-fill"></div><span id="ult-label">Rend Reality <kbd>R</kbd></span></div>
+      <div class="bar dodge"><div id="dodge-fill"></div></div>
+      <div id="abilities"></div>
+    </div>
+    <div class="hud-tr">
+      <div id="depth"></div>
+      <div class="stats"><span>◆ <b id="shards">0</b></span><span>☠ <b id="kills">0</b></span><span>⧗ <b id="timer">0:00</b></span></div>
+    </div>
+    <div id="objective"></div>
+    <div id="bossbar" class="hidden"><div id="boss-name"></div><div class="bar boss"><div id="boss-fill"></div></div></div>
+    <div id="combo"><div id="combo-n">0</div><div id="combo-x">HITS</div><div id="combo-r"></div></div>
+    <div id="weapon"></div>
+    <div class="xpwrap"><div class="lvl">LV <b id="level">1</b></div><div class="bar xp"><div id="xp-fill"></div></div></div>
+  </div>
+  <div id="announce"></div>
+  <div id="titlecard"></div>
+
+  <!-- Title menu -->
+  <div id="menu" class="screen">
+    <div class="menu-inner">
+      <div class="logo"><span>ABYSSAL</span><span>STRIDE</span></div>
+      <p class="tagline">Descend through the dreams of dead gods. Strike. Counter. Unmake.</p>
+      <div class="menu-buttons">
+        <button id="btn-start" class="btn big">Begin Descent</button>
+        <button id="btn-tree" class="btn">Ossuary of Echoes <span class="echo-count">◈ <b id="menu-echoes">0</b></span></button>
+        <button id="btn-settings" class="btn ghost">Settings</button>
+      </div>
+      <p id="menu-stats" class="muted"></p>
+      <div class="controls">
+        <div><kbd>WASD</kbd> Move</div><div><kbd>LMB</kbd>/<kbd>J</kbd> Strike</div><div><kbd>RMB</kbd>/<kbd>K</kbd> Heavy</div>
+        <div><kbd>Space</kbd> Dodge</div><div><kbd>Q</kbd> Counter</div><div><kbd>R</kbd> Rend Reality</div>
+        <div><kbd>E</kbd> Open container</div><div><kbd>Mouse</kbd> Camera</div><div><kbd>Esc</kbd> Pause</div>
+      </div>
+      <p class="muted small">Gamepad supported. Strikes lunge to the nearest foe in your stick direction — chain hits to build your combo.</p>
+    </div>
+  </div>
+
+  <!-- Level-up / chest offers -->
+  <div id="offers" class="screen hidden"></div>
+
+  <!-- Pause -->
+  <div id="pause" class="screen hidden">
+    <div class="panel">
+      <h2>Paused</h2>
+      <button id="btn-resume" class="btn big">Resume</button>
+      <button id="btn-pause-settings" class="btn">Settings</button>
+      <button id="btn-abandon" class="btn ghost danger">Abandon Run</button>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div id="settings" class="screen hidden">
+    <div class="panel">
+      <h2>Settings</h2>
+      <label>Render resolution
+        <select id="set-quality">
+          <option value="300">Crunchy (300p)</option>
+          <option value="432">Retro (432p)</option>
+          <option value="600">Balanced (600p)</option>
+          <option value="0">Native</option>
+        </select>
+      </label>
+      <label>Volume <input id="set-volume" type="range" min="0" max="1" step="0.05" /></label>
+      <label>Mouse sensitivity <input id="set-sens" type="range" min="0.3" max="2.5" step="0.05" /></label>
+      <label>Screen shake <input id="set-shake" type="range" min="0" max="1.5" step="0.05" /></label>
+      <button id="settings-close" class="btn">Done</button>
+    </div>
+  </div>
+
+  <!-- Game over -->
+  <div id="gameover" class="screen hidden">
+    <div class="panel wide">
+      <h2 class="blood">You Have Been Unmade</h2>
+      <div id="go-stats" class="go-grid"></div>
+      <div class="go-echoes">Echoes gathered <b id="go-echoes">0</b> <span class="muted">· Total ◈ <span id="go-total">0</span></span></div>
+      <div class="row">
+        <button id="btn-again" class="btn big">Descend Again</button>
+        <button id="btn-go-tree" class="btn">Ossuary of Echoes</button>
+        <button id="btn-go-menu" class="btn ghost">Title</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Skill tree -->
+  <div id="tree" class="screen hidden">
+    <div class="tree-head">
+      <div>
+        <h2>Ossuary of Echoes</h2>
+        <p class="muted">Spend echoes on permanent power. Reset refunds everything.</p>
+      </div>
+      <div class="tree-side">
+        <div class="echo-big">◈ <b id="tree-echoes">0</b></div>
+        <div class="muted small">Invested: <span id="tree-spent">0</span></div>
+        <button id="tree-reset" class="btn ghost danger">Reset All</button>
+        <button id="tree-close" class="btn">Back</button>
+      </div>
+    </div>
+    <div id="tree-canvas"></div>
+    <div id="tree-detail" class="panel"><p class="muted">Hover a node to inspect it. Click to purchase.</p></div>
+  </div>
+
+  <div id="fatal" class="screen hidden"></div>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

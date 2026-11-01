@@ -1,0 +1,13 @@
+{
+  "name": "abyssal-stride",
+  "version": "0.1.0",
+  "description": "Retro 3D stickman freeflow-combat roguelite in a cosmic horror world. Pure WebGL2, no engine.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js 8080",
+    "test": "node --test tests/*.test.js",
+    "smoke": "node tools/smoke.mjs"
+  },
+  "license": "MIT"
+}
