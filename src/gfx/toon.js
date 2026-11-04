@@ -181,7 +181,20 @@ uniform vec3 u_fog;
 uniform int u_flat;
 uniform float u_fogOffset;
 uniform vec3 u_inkCol;
+uniform vec3 u_focus;
+uniform float u_smoke;
 layout(location=0) out vec4 o_col;
+float bayer4(vec2 p){
+  ivec2 q = ivec2(mod(floor(p), 4.0));
+  float m[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+  return (m[q.x + q.y * 4] + 0.5) / 16.0;
+}
+// Smoke is a dithered cutout: an ordered 4x4 screen-door instead of a translucent blend, thinned further around
+// the combat focus (the player on screen) so fighters always read through it.
+float smokeCover(float a){
+  float fd = length(gl_FragCoord.xy - u_focus.xy) / max(u_focus.z, 1.0);
+  return a * u_smoke * mix(0.35, 1.0, smoothstep(0.3, 1.0, fd));
+}
 void main(){
   vec2 uv = v_uv;
   float r = length(uv);
@@ -209,6 +222,11 @@ void main(){
   if (u_flat == 0 && (sh == 5 || sh == 3) && core < 0.5) c = mix(c, u_inkCol, 0.55);
   float fog = smoothstep(u_fog.x, u_fog.y * 1.1, v_dist - u_fogOffset);
   float alpha = v_col.a > 0.5 ? a : a * step(0.12, v_col.a) * 0.9;
+  if (sh == 5 && u_flat == 0) {
+    if (smokeCover(clamp(v_col.a, 0.0, 1.0) * 1.25) * (1.0 - fog) < bayer4(gl_FragCoord.xy)) discard;
+    alpha = 1.0;
+    fog = 0.0;
+  }
   o_col = vec4(c, alpha * (1.0 - fog));
 }`;
 

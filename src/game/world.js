@@ -3,6 +3,7 @@ import { Noise2D } from '../core/noise.js';
 import { RNG } from '../core/rng.js';
 import { SpatialHash } from '../core/spatial.js';
 import { terrainMesh } from '../gfx/meshes.js';
+import { Foliage } from './foliage.js';
 import { PRIM } from '../gfx/renderer.js';
 import { SHAPE } from '../gfx/particles.js';
 import { clamp, mixRgb, TAU } from '../core/math.js';
@@ -107,6 +108,13 @@ export class World {
     if (mode === 'arena') this._populateArena();
     else this._populateOpen();
     R.uploadStatic();
+    // foliage is placed after props so tufts never grow inside them
+    this.foliage = new Foliage(this, dim.foliage, seed);
+    if (R.setFoliageKind) {
+      R.setFoliageKind(dim.foliage.kind);
+      R.setFoliageInstances(null, 0);
+      R.wind = dim.foliage.wind;
+    }
   }
 
   // ------------------------------------------------------------ terrain
@@ -674,25 +682,42 @@ export class World {
     this.exitPortal = { kind: 'exit', x, z, y: this.height(x, z), yaw: 0, scale: 1 };
   }
 
+  /**
+   * Layered realm atmosphere around the player. Every particle is flagged `amb` so the player's wake (see
+   * Particles.field) shoves it aside and sweeps it along; sprinting makes the realm visibly churn.
+   */
   ambient(game, cx, cy, cz, dt) {
     const a = this.dim.ambient;
-    const n = Math.floor(60 * dt + Math.random());
+    const P = game.particles;
+    const sprint = game.player && game.player.sprinting ? 1 : 0;
+    const n = Math.floor((150 + sprint * 60) * dt + Math.random());
+    const R = Math.random;
     for (let i = 0; i < n; i++) {
-      const x = cx + (Math.random() - 0.5) * 50, z = cz + (Math.random() - 0.5) * 50;
+      // denser close to the player, thinner out to 26 m
+      const ang = R() * 6.2832, rad = Math.pow(R(), 0.7) * 26;
+      const x = cx + Math.cos(ang) * rad, z = cz + Math.sin(ang) * rad;
       const g = this.height(x, z);
-      const c = Math.random() < 0.7 ? a.color : a.color2;
+      const layer = R();
       switch (a.kind) {
         case 'embers':
-          game.particles.emit({ x, y: g + Math.random() * 8, z, vx: (Math.random() - 0.5) * 0.6, vy: 0.4 + Math.random() * 0.8, vz: (Math.random() - 0.5) * 0.6, life: 3, size: Math.random() < 0.7 ? 0.05 : 0.09, color: c, shape: SHAPE.GLOW, drag: 0.2, additive: c === a.color });
+          if (layer < 0.45) P.emit({ amb: 1, x, y: g + R() * 7, z, vx: (R() - 0.5) * 0.6, vy: 0.5 + R() * 0.9, vz: (R() - 0.5) * 0.6, life: 3, size: R() < 0.7 ? 0.05 : 0.09, color: a.color, shape: SHAPE.GLOW, drag: 0.3 });
+          else if (layer < 0.9) P.emit({ amb: 1, x, y: g + 3 + R() * 7, z, vx: 0.4 + (R() - 0.5) * 0.5, vy: -0.6 - R() * 0.4, vz: (R() - 0.5) * 0.5, life: 5, size: 0.05 + R() * 0.04, color: a.color2, shape: SHAPE.CHUNK, drag: 0.4, additive: false, alpha: 0.85 });
+          else P.emit({ amb: 1, x, y: g + 0.3, z, vx: (R() - 0.5) * 0.4, vy: 0.25, vz: (R() - 0.5) * 0.4, life: 2.5, size: 0.5, size1: 1.4, color: [0.32, 0.27, 0.27], shape: SHAPE.SMOKE, drag: 0.5, additive: false, alpha: 0.35 });
           break;
         case 'bubbles':
-          game.particles.emit({ x, y: g + Math.random() * 3, z, vx: 0, vy: 0.8 + Math.random(), vz: 0, life: 4, size: 0.08 + Math.random() * 0.08, color: c, shape: SHAPE.RING, drag: 0.1 });
+          if (layer < 0.4) P.emit({ amb: 1, x, y: g + R() * 3, z, vx: 0, vy: 0.8 + R(), vz: 0, life: 4, size: 0.07 + R() * 0.09, color: a.color, shape: SHAPE.RING, drag: 0.15 });
+          else if (layer < 0.85) P.emit({ amb: 1, x, y: g + 0.5 + R() * 6, z, vx: (R() - 0.5) * 0.3, vy: (R() - 0.5) * 0.15, vz: (R() - 0.5) * 0.3, life: 5, size: 0.035, color: a.color2, shape: SHAPE.GLOW, drag: 0.2 });
+          else P.emit({ amb: 1, x, y: g + 0.2, z, vx: (R() - 0.5) * 0.3, vy: 0.08, vz: (R() - 0.5) * 0.3, life: 3, size: 0.6, size1: 1.6, color: [0.12, 0.3, 0.3], shape: SHAPE.SMOKE, drag: 0.6, additive: false, alpha: 0.3 });
           break;
         case 'stars':
-          game.particles.emit({ x, y: g + 1 + Math.random() * 12, z, vx: (Math.random() - 0.5) * 0.3, vy: -0.1 + Math.random() * 0.2, vz: (Math.random() - 0.5) * 0.3, life: 4, size: 0.08 + Math.random() * 0.1, color: c, shape: SHAPE.STAR, drag: 0 });
+          if (layer < 0.5) P.emit({ amb: 1, x, y: g + 1 + R() * 10, z, vx: (R() - 0.5) * 0.3, vy: -0.1 + R() * 0.2, vz: (R() - 0.5) * 0.3, life: 4, size: 0.07 + R() * 0.1, color: a.color, shape: SHAPE.STAR, drag: 0.1 });
+          else if (layer < 0.88) P.emit({ amb: 1, x, y: g + 0.5 + R() * 4, z, vx: (R() - 0.5) * 0.8, vy: 0.2 + R() * 0.3, vz: (R() - 0.5) * 0.8, life: 2.2, size: 0.05, color: a.color2, shape: SHAPE.SPARK, drag: 0.2 });
+          else P.emit({ amb: 1, x, y: g + 0.15, z, vx: 0, vy: 0.4, vz: 0, life: 2, size: 0.1, size1: 1.2, color: a.color2, shape: SHAPE.RING, drag: 0.5, alpha: 0.6 });
           break;
         case 'spores':
-          game.particles.emit({ x, y: g + Math.random() * 6, z, vx: (Math.random() - 0.5) * 0.4, vy: -0.2 + Math.random() * 0.3, vz: (Math.random() - 0.5) * 0.4, life: 4, size: 0.06 + Math.random() * 0.06, color: c, shape: SHAPE.GLOW, drag: 0.1 });
+          if (layer < 0.5) P.emit({ amb: 1, x, y: g + R() * 6, z, vx: (R() - 0.5) * 0.4, vy: -0.2 + R() * 0.3, vz: (R() - 0.5) * 0.4, life: 4, size: 0.06 + R() * 0.06, color: a.color, shape: SHAPE.GLOW, drag: 0.15 });
+          else if (layer < 0.8) P.emit({ amb: 1, x, y: g + 0.3 + R() * 3, z, vx: (R() - 0.5) * 0.2, vy: 0.3 + R() * 0.3, vz: (R() - 0.5) * 0.2, life: 3, size: 0.04, color: a.color2, shape: SHAPE.GLOW, drag: 0.3 });
+          else P.emit({ amb: 1, x, y: g + 6 + R() * 6, z, vx: 0, vy: -4, vz: 0, life: 1.6, size: 0.06, color: this.dim.blood, shape: SHAPE.CHUNK, grav: 6, bounce: 0, additive: false });
           break;
         default:
           break;
@@ -700,4 +725,3 @@ export class World {
     }
   }
 }
-

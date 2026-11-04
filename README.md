@@ -1,6 +1,6 @@
 # Abyssal Stride
 
-A third-person hand-drawn anime 3D roguelite set in a cosmic-horror / dark-fantasy abyss. Freeflow combat, procedural worlds, tiered loot, bosses and a persistent skill tree. Everything is plain JavaScript and WebGL2. There is no engine, no framework, no build step, no assets and no runtime dependencies.
+A third-person hand-drawn anime 3D roguelite set in a cosmic-horror / dark-fantasy abyss. Four-slot arsenal combat with evolving weapons, magic and superpowers, escalating waves, procedural worlds, bosses and a persistent skill tree. Everything is plain JavaScript and WebGL2. There is no engine, no framework, no build step, no assets and no runtime dependencies.
 
 ## Run it
 
@@ -24,21 +24,26 @@ npm run smoke
 
 | Action | Keyboard / mouse | Gamepad |
 | --- | --- | --- |
-| Move | WASD | Left stick |
+| Move / sprint | WASD / hold Shift | Left stick / L3 |
 | Camera | Mouse (click to capture) | Right stick |
-| Strike (freeflow) | LMB / J | X |
-| Heavy, or Takedown at 10+ combo | RMB / K | Y |
-| Dodge roll / backflip | Space / Shift | A |
-| Counter (cyan sigil) | Q / F | B |
-| Rend Reality (ultimate) | R | RB |
+| Lock on / off | Tab or middle mouse | R3 or LT |
+| Switch lock target | Mouse wheel, C / Z, or a sharp mouse flick | Flick the right stick |
+| Blade slot (melee chain, hold to keep cutting) | LMB / J | X |
+| Arms slot (hold to fire) | RMB / K | Y |
+| Arcana slot (spell) | Q | B |
+| Power slot (superpower) | F | RB |
+| Dodge roll / backflip | Space | A |
+| Rend Reality (ultimate) | R | RT |
 | Open loot container | E | LB |
 | Pick upgrade / reroll | 1 2 3 (4) / X | D-pad up/down/left/right / Back |
 | Pause | Esc / P | Start |
 
+Lock-on camera assist and flick-switch sensitivity are adjustable in Settings.
+
 ## How a run works
 
-1. **Explore a procedurally generated open world** (about 300 × 300 m) for the current dimension. Enemy spawns ramp up with time and depth, and periodic **Tides** send surges at you.
-2. **Earn shards and experience.** Kills drop soul wisps (XP) and shards. Each level-up pauses the game and offers **one of three upgrades** rolled from the reward table. Each card's rarity is one of six tiers: Common, Uncommon, Rare, Epic, Legendary or Eldritch.
+1. **Explore a procedurally generated open world** (about 300 × 300 m) for the current dimension and **survive its waves.** Each wave has a quota of enemies and a short breather after it. Every third wave ends in a **Tide** that crashes in from one side, and every fourth is an **Elite wave**.
+2. **Earn shards and experience.** Kills drop soul wisps (XP) and shards. Experience is lean and the level curve is steep. Each level-up pauses the game and offers **one of three cards**: a new item for an empty slot, a level for an item you own, a rare replacement, a passive attribute, or (when one is ready) an **Evolution**. Each card's rarity is one of six tiers: Common, Uncommon, Rare, Epic, Legendary or Eldritch.
 3. **Open loot containers** with shards. There are three tiers (Reliquary, Ossuary Casket, Eldritch Coffer). They cost more as you open more of them and as you go deeper, and higher tiers guarantee rarer offers and more weapons.
 4. **Awaken obelisks.** Each one you charge pays out loot and brings the **timed Rift** closer. Once the Rift opens it closes again after 80 seconds. If you miss it, an elite hunt spawns and the Rift reopens later.
 5. **Step into the Rift to fight the dimension's boss** in a sanctum floating over the void. When it dies it drops a relic reward and an exit portal that takes you one Depth further down. The next dimension is harder.
@@ -46,22 +51,33 @@ npm run smoke
 
 ## Features
 
-**Freeflow combat**
-- Strikes auto-target the best enemy in your stick or camera direction and **lunge** up to 9 m to reach it.
-- Combo chains differ per weapon. Light hits interrupt weaker enemies, and heavy hits break the poise of elites.
-- **Counter** any enemy showing a cyan sigil (this also works on bosses) for a slow-motion riposte. Red telegraphs can't be countered and have to be dodged.
-- Dodges have i-frames. A dodge with no direction becomes a backflip.
-- Hits have hitstop, screen shake and FOV kicks. Combo ranks run from Fervent up to Godslayer, and the combo multiplies your damage.
-- At 10+ combo, a heavy attack becomes a **Takedown**. Hits charge **Rend Reality**, an ultimate that hits everything in a wide area with a big shockwave.
+**Combat: four designated slots**
+- **Blade** (melee chain), **Arms** (held ranged fire), **Arcana** (spells on a cooldown) and **Power** (superpowers on a long cooldown). All four are equipped at once, each on its own input.
+- There is no lunging, countering or combo scaling. Cuts land where you stand, every enemy attack has a red telegraph and must be dodged, and only heavy hits break a windup.
+- **Lock-on** frames the target beside you, makes you strafe around it, and aims Arms and Arcana at it. Switch targets with the wheel or a quick flick. The lock hops to the next foe when the target dies.
+- **Sprint** for speed: it holds fire, kicks up the realm under your feet and streaks the air.
+- Dodges and dashes have i-frames. A dodge with no direction becomes a backflip. Damage dealt slowly charges **Rend Reality**, an ultimate that hits everything around you.
 
-**Weapons**
-- Bare Knuckles, Crescent Blade, Greatcleaver, Voidspear, Twin Fangs, Grave Maul and Reaper Scythe.
-- Each weapon has its own stance, moveset, reach and speed.
-- Every rarity tier upgrades the procedural model: glowing fullers, rune studs, horned guards, a watching eye at Eldritch, plus orbiting relic shards. Trails and effects change with tier too: coloured trails, sparks, idle auras, lights, and void smoke at the top tier.
+**The arsenal**
+| Slot | Items |
+| --- | --- |
+| Blade | Crescent Katana, Twin Fangs, Greatcleaver, Reaper Scythe, Voidspear, Spirit Fists |
+| Arms | Ofuda Talismans, Spirit Bow, Kunai Fan, Chakram Halo, Soul Revolver |
+| Arcana | Thunder Sigil, Frost Lotus, Hellfire Kanji, Blood Moon, Void Orb |
+| Power | Afterimage, Gravity Crush, Chrono Stop, Berserk Aura, Phantom Arms |
+
+- Every item levels from 1 to 5. Blade levels also upgrade the procedural model (fullers, runes, horns), and several items gain new behaviour at Lv 3 and Lv 5.
+- **Evolutions use marked combinations.** Each recipe has a unique mark (ϟ, ◐, ❄ …) shown on both ingredients' cards and on the slot bar, and it lights up when you own the partner. A max-level base plus its marked partner offers an Evolution card that transforms the base in place. Some items branch: Crescent Katana becomes **Raijin Edge** with Thunder Sigil or **Muramasa** with Blood Moon, and Spirit Bow becomes **Glacier Comet** with Frost Lotus or **Raiju Longbow** with Thunder Sigil.
+- 16 evolutions: Raijin Edge, Muramasa, Shadow Waltz, Worldsplitter, Eclipse Reaper, Glacial Pike, Asura Hundred Fists, Thousand Seal Inferno, Glacier Comet, Raiju Longbow, Thousand Kunai Storm, Clockwork Halo, Last Rites, Infernal Calligraphy, Event Horizon and Crimson Moonrise.
+- Status effects: freeze (frozen foes take +25% damage and some evolutions shatter them), stopped time, burn and bleed.
 
 **Upgrades**
-- 16 attributes, such as damage, attack speed, crit, lifesteal, reach and area, armour, momentum, phase step and thorns.
-- 10 abilities that stack with "power": Void Orbitals, Starlight Arc (chain lightning), Blood Nova, Spectral Blades (homing), Entropy Field, Echo Strike, Starfall, Singularity (gravity well), Ember Step and Eldritch Gaze.
+- 17 passive attributes with deliberately modest values: damage, attack/fire rate, movement and sprint speed, health, lifesteal, crit, reach and area, pickup radius, luck, armour, Arcana/Power cooldowns, regeneration, experience, dodge cooldown and thorns.
+
+**Difficulty**
+- The player starts lean: 90 health, low regeneration, and 65% experience gain on a steep level curve.
+- Every wave survived across the run raises enemy health, damage, speed, attack frequency and elite odds, and every Depth raises them further.
+- Bosses scale with depth, with waves survived and with each guardian already slain. During the fight they call in waves of adds, then enrage after 100 seconds or below 25% health.
 
 **Enemies**
 | Enemy | What it does |
@@ -97,7 +113,10 @@ Each dimension has its own lighting, fog, sky (with a nebula and a watching ecli
 - Verlet **ragdolls**, generated from any creature rig, with **dismemberment** on brutal kills.
 - A Verlet cloth scarf on the player.
 - Rigid-ish **debris physics** from **destructible** pillars, urns, crystals and egg sacs.
-- About 15k pooled particles (sparks, blood, smoke, embers), persistent blood decals, shockwaves, lightning and up to 16 dynamic point lights.
+- About 27k pooled particles (sparks, blood, smoke, embers), persistent blood decals, shockwaves, lightning and up to 16 dynamic point lights.
+- **Smoke is a dithered cutout**: an ordered 4×4 screen-door with inked edges instead of a translucent blend. It thins out further around the player on screen, so fighters always read through it.
+- **Realm atmosphere** in layers: ash, embers and dust in the Ashen Hollows; bubbles, plankton and silt in the Drowned Abyss; star motes, void sparks and glyph rings in the Starless Veil; spores and blood drips in the Flesh Cathedral. Every ambient particle parts around the player and gets swept along in their wake, much harder while sprinting.
+- **Dense foliage per realm**: ash grass, kelp, crystal shards or flesh cilia. Tufts are streamed in 4 m cells around the player and drawn as one instanced batch. The vertex shader bends every blade away from the player, the last second of footsteps (which spring back), nearby enemies and blasts. Running or dodging through dense patches throws blades into the air.
 
 **Animation**
 - The procedural stickman has FK arms and **two-bone IK legs**.
@@ -129,7 +148,7 @@ All hand-drawn packs share the same character tech:
 - **Models.** The 16-joint pose drives a 28-joint skeleton: a curved three-segment spine, clavicles, a lagging head, wrists and hand tips with follow-through, thumbs, heels and rolling toes. Each cast's designs are skinned onto it with faces, hair and clothing. Hair, coat tails, sashes and robes run on physics chains. Other creatures get fleshed-out volumes over their rigs.
 - **Ink pass.** Depth and normal edges from a G-buffer become outlines that re-trace a few times a second ("line boil").
 - **Cel effects and sky.** Effects are flat painted shapes, and the sky is banded with painted clouds.
-- **Impact frames and speed lines.** Two-tone impact frames fire on counters, takedowns and big kills, and speed lines appear during lunges.
+- **Impact frames and speed lines.** Two-tone impact frames fire on evolutions, stopped time, guardian deaths and big hits, and speed lines appear while sprinting.
 
 `node tools/previz.mjs <id>` replays the same seeded scenes in one pack and saves stills, a model sheet and a combat clip. It needs Playwright.
 

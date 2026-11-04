@@ -9,16 +9,22 @@ import { solveHumanoid, makePose, STANCE, CLIPS, sampleClip, J } from '../src/ga
 import { World } from '../src/game/world.js';
 import { DIMENSIONS } from '../src/game/dimensions.js';
 import { Legs } from '../src/game/legs.js';
+import { Loadout, ITEMS, ITEM_IDS, RECIPES, SLOTS, MAX_LEVEL } from '../src/game/arsenal.js';
 
 function fakePlayer() {
-  return {
+  const game = { shockwave() {}, impact() {}, player: null };
+  const p = {
     stats: { ...PLAYER_BASE },
     hp: PLAYER_BASE.maxHp,
-    ab: {},
     taken: {},
-    weapon: makeWeapon('fists', 0),
-    equip(type, tier) { this.weapon = makeWeapon(type, tier); },
+    buffs: {},
+    blades: 0,
+    refreshBlade() { this.blades++; },
   };
+  game.player = p;
+  p.loadout = new Loadout(game);
+  p.loadout.equip('katana', 1);
+  return p;
 }
 
 test('rarity rolls stay in range and luck shifts the distribution upward', () => {
@@ -36,36 +42,82 @@ test('rarity rolls stay in range and luck shifts the distribution upward', () =>
   }
 });
 
-test('offers are distinct and apply to the player', () => {
+test('offers are distinct, valid and apply to the player', () => {
   const rng = new RNG(99);
   const p = fakePlayer();
-  for (let round = 0; round < 50; round++) {
-    const offers = rollOffers(rng, p, 3, { weaponChance: 0.3 });
+  for (let round = 0; round < 80; round++) {
+    const offers = rollOffers(rng, p, 3, {});
     assert.equal(offers.length, 3);
-    const ids = offers.map((o) => o.id);
-    assert.equal(new Set(ids).size, 3);
+    assert.equal(new Set(offers.map((o) => o.id)).size, 3);
     for (const o of offers) {
       assert.ok(o.rarity >= 0 && o.rarity < RARITY.length);
       assert.ok(o.name && o.desc && o.icon);
+      if (o.kind === 'item') assert.ok(SLOTS.includes(o.slot) && o.next >= 1 && o.next <= MAX_LEVEL);
     }
     applyOffer(p, offers[0]);
   }
-  assert.ok(p.stats.dmgMul >= 1);
+  // a long run fills slots and levels items without ever exceeding the cap
+  for (const k of SLOTS) { const s = p.loadout.get(k); if (s) assert.ok(s.level >= 1 && s.level <= MAX_LEVEL); }
+  assert.ok(SLOTS.filter((k) => p.loadout.get(k)).length >= 3);
 });
 
-test('stat upgrades scale with rarity', () => {
+test('stat upgrades scale with rarity but stay modest', () => {
   const might = UPGRADES.find((u) => u.id === 'might');
   const p1 = fakePlayer(), p2 = fakePlayer();
   applyOffer(p1, { kind: 'stat', id: 'might', value: might.base * RARITY[0].mul });
   applyOffer(p2, { kind: 'stat', id: 'might', value: might.base * RARITY[5].mul });
-  assert.ok(p2.stats.dmgMul - 1 > (p1.stats.dmgMul - 1) * 4);
+  assert.ok(p2.stats.dmgMul - 1 > (p1.stats.dmgMul - 1) * 2.5);
+  assert.ok(p2.stats.dmgMul < 1.25);
 });
 
-test('weapon offers equip the weapon at the rolled tier', () => {
+test('arsenal: every item is well-formed and every recipe pairs items from different slots', () => {
+  for (const [id, def] of Object.entries(ITEMS)) {
+    assert.ok(SLOTS.includes(def.slot), id);
+    for (let L = 1; L <= MAX_LEVEL; L++) {
+      const st = def.stats(L);
+      for (const v of Object.values(st)) if (typeof v === 'number') assert.ok(Number.isFinite(v), `${id} L${L}`);
+      if (def.slot !== 'blade') assert.ok(st.cd > 0, `${id} has a cooldown`);
+      else { assert.ok(st.dmg > 0 && st.speed > 0); assert.ok(WEAPONS[def.model], `${id} model`); }
+    }
+    if (def.slot === 'arms') assert.equal(typeof def.fire, 'function', id);
+    if (def.slot === 'magic' || def.slot === 'power') assert.equal(typeof def.cast, 'function', id);
+    if (!def.evolved && def.slot !== 'blade') assert.ok(def.stats(MAX_LEVEL).cd < def.stats(1).cd || def.slot === 'arms', `${id} cooldown improves`);
+  }
+  const marks = new Set();
+  for (const r of RECIPES) {
+    assert.ok(ITEMS[r.base] && ITEMS[r.with] && ITEMS[r.into], r.into);
+    assert.notEqual(ITEMS[r.base].slot, ITEMS[r.with].slot, `${r.into} pairs different slots`);
+    assert.equal(ITEMS[r.into].slot, ITEMS[r.base].slot, `${r.into} evolves in place`);
+    assert.ok(ITEMS[r.into].evolved && !ITEMS[r.base].evolved);
+    assert.ok(!marks.has(r.mark), `unique mark ${r.mark}`);
+    marks.add(r.mark);
+  }
+  // branching paths exist, and every base item takes part in at least one evolution
+  assert.ok(RECIPES.filter((r) => r.base === 'katana').length >= 2);
+  for (const id of ITEM_IDS) assert.ok(RECIPES.some((r) => r.base === id || r.with === id), `${id} has a recipe`);
+});
+
+test('evolution needs the base at max level plus its marked partner, then replaces the base', () => {
   const p = fakePlayer();
-  applyOffer(p, { kind: 'weapon', weapon: 'maul', rarity: 3 });
-  assert.equal(p.weapon.type, 'maul');
-  assert.equal(p.weapon.tier, 3);
+  const L = p.loadout;
+  L.equip('thunder', 1);
+  assert.equal(L.readyEvolutions().length, 0);
+  L.levelUp('katana', MAX_LEVEL);
+  assert.equal(L.levelOf('katana'), MAX_LEVEL);
+  const ready = L.readyEvolutions();
+  assert.deepEqual(ready.map((r) => r.into), ['raijin']);
+  const offers = rollOffers(new RNG(3), p, 3, {});
+  assert.equal(offers[0].kind, 'evolve');
+  applyOffer(p, offers[0]);
+  assert.equal(L.get('blade').id, 'raijin');
+  assert.ok(L.has('thunder'));
+  assert.equal(L.readyEvolutions().length, 0);
+  // the meta discount lets a base evolve one level early
+  const q = fakePlayer();
+  q.loadout.equip('bloodmoon', 1);
+  q.loadout.levelUp('katana', MAX_LEVEL - 2);
+  assert.equal(q.loadout.readyEvolutions(0).length, 0);
+  assert.equal(q.loadout.readyEvolutions(1)[0].into, 'muramasa');
 });
 
 test('every weapon builds at every tier with progressively richer models', () => {

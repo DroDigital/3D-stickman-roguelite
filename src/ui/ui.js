@@ -2,7 +2,7 @@
 import { project, clamp } from '../core/math.js';
 import { RARITY } from '../game/config.js';
 import { SKILLS, SKILL_BY_ID } from '../game/meta.js';
-import { UPGRADE_BY_ID } from '../game/upgrades.js';
+import { ITEMS, SLOTS, SLOT_INFO, MAX_LEVEL, recipesFor } from '../game/arsenal.js';
 import { CHEST_TIERS } from '../game/world.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -28,20 +28,20 @@ export class UI {
     this.el = {
       hpFill: $('#hp-fill'), hpText: $('#hp-text'), ultFill: $('#ult-fill'), ultLabel: $('#ult-label'),
       xpFill: $('#xp-fill'), level: $('#level'), shards: $('#shards'), timer: $('#timer'), depth: $('#depth'),
-      kills: $('#kills'), objective: $('#objective'), combo: $('#combo'), comboN: $('#combo-n'), comboR: $('#combo-r'),
-      boss: $('#bossbar'), bossName: $('#boss-name'), bossFill: $('#boss-fill'), weapon: $('#weapon'), abilities: $('#abilities'),
+      kills: $('#kills'), objective: $('#objective'), slots: $('#slots'), buffs: $('#buffs'),
+      wave: $('#wave'), waveLabel: $('#wave-label'), waveFill: $('#wave-fill'),
+      boss: $('#bossbar'), bossName: $('#boss-name'), bossFill: $('#boss-fill'),
       announce: $('#announce'), titleCard: $('#titlecard'), offers: $('#offers'), pause: $('#pause'), gameover: $('#gameover'),
       menu: $('#menu'), tree: $('#tree'), settings: $('#settings'), dodge: $('#dodge-fill'),
       hpGhost: $('#hp-ghost'), bossGhost: $('#boss-ghost'), portrait: $('#portrait'), vignette: $('#vignette'),
       ultBar: $('#ult-fill').parentElement, chipShards: $('#chip-shards'), lvlBadge: $('#lvl-badge'),
     };
     // animated HUD state: trailing "ghost" damage bars, hurt face timer, last values for pop animations
-    this.fx = { ghost: 1, ghostHold: 0, bossGhost: 1, bossHold: 0, hp: -1, hurtT: 0, combo: 0, shards: -1, level: -1, last: 0, bossId: null };
+    this.fx = { ghost: 1, ghostHold: 0, bossGhost: 1, bossHold: 0, hp: -1, hurtT: 0, shards: -1, level: -1, last: 0, bossId: null, slotKey: '', wave: '' };
     this.pal = { ink: '#140c18', paper: '#f3ead8', accent: '#e8253f', gold: '#ffcf4a', cyan: '#7fe6ff', hi: '#a98bff' };
     this.tmp = [0, 0, 0];
     this.offerState = null;
-    this._lastAb = '';
-    this._lastWeapon = '';
+
   }
 
   bind(game) {
@@ -75,6 +75,10 @@ export class UI {
     v.oninput = () => { st.volume = Number(v.value); this.audio.setVolume(st.volume); this.meta.save(); };
     s.oninput = () => { st.sensitivity = Number(s.value); this.meta.save(); };
     sh.oninput = () => { st.shake = Number(sh.value); this.meta.save(); };
+    const lk = $('#set-lock'), fl = $('#set-flick');
+    lk.value = String(st.lockAssist ?? 1); fl.value = String(st.lockFlick ?? 1);
+    lk.oninput = () => { st.lockAssist = Number(lk.value); this.meta.save(); };
+    fl.oninput = () => { st.lockFlick = Number(fl.value); this.meta.save(); };
     this.updateMenuStats();
   }
 
@@ -150,20 +154,8 @@ export class UI {
     o.offers = offers;
     const el = this.el.offers;
     el.classList.remove('hidden');
-    const cards = offers.map((of, i) => {
-      const r = RARITY[of.rarity];
-      const kindLabel = of.kind === 'weapon' ? 'Weapon' : of.kind === 'ability' ? (of.level ? `Ability · Lv ${Math.floor(of.level) + 1}` : 'New Ability') : 'Attribute';
-      const pips = Array.from({ length: RARITY.length }, (_, k) => `<i class="${k <= of.rarity ? 'on' : ''}"></i>`).join('');
-      return `<button class="card r-${r.id}" data-i="${i}" style="--rc:${r.hex}">
-        <div class="card-glow"></div>
-        <div class="card-rarity">${r.name}<span class="pips">${pips}</span></div>
-        <div class="card-icon">${esc(of.icon)}</div>
-        <div class="card-name">${esc(of.name)}</div>
-        <div class="card-kind">${kindLabel}</div>
-        <div class="card-desc">${esc(of.desc)}</div>
-        <div class="card-key">${i + 1}</div>
-      </button>`;
-    }).join('');
+    const L = this.game && this.game.player ? this.game.player.loadout : null;
+    const cards = offers.map((of, i) => this._card(of, i, L)).join('');
     el.innerHTML = `<div class="offers-head"><h2>${esc(o.title)}</h2><p>${esc(o.subtitle || '')}</p></div>
       <div class="offers-row">${cards}</div>
       <div class="offers-foot">${o.rerolls > 0 ? `<button id="btn-reroll" class="btn ghost">Reroll (${o.rerolls}) <kbd>X</kbd></button>` : '<span class="muted">No rerolls</span>'}</div>`;
@@ -173,6 +165,46 @@ export class UI {
     });
     const rb = el.querySelector('#btn-reroll');
     if (rb) rb.onclick = () => this.reroll();
+  }
+
+  _card(of, i, L) {
+    const r = RARITY[of.rarity];
+    const pips = Array.from({ length: RARITY.length }, (_, k) => `<i class="${k <= of.rarity ? 'on' : ''}"></i>`).join('');
+    if (of.kind === 'evolve') {
+      return `<button class="card evolve" data-i="${i}" style="--ec:${of.color}">
+        <div class="card-glow"></div>
+        <div class="card-rarity">Evolution<span class="pips">${pips}</span></div>
+        <div class="card-icon">${esc(of.icon)}</div>
+        <div class="card-name">${esc(of.name)}</div>
+        <div class="card-recipe">${esc(of.from)} <b>${esc(of.mark)}</b> ${esc(of.with)}</div>
+        <div class="card-desc">${esc(of.desc)}</div>
+        <div class="card-key">${i + 1}</div>
+      </button>`;
+    }
+    if (of.kind === 'item') {
+      const tag = of.mode === 'new' ? 'New' : of.mode === 'level' ? `Lv ${of.level} → ${of.next}` : `Replaces ${of.replaces}`;
+      const marks = (of.marks || []).map((m) => `<div class="card-mark${m.owned ? ' owned' : ''}" style="--mc:${m.color}"><b>${esc(m.mark)}</b><span>${m.asBase ? '' : 'Feeds '}${esc(m.into)} · with ${esc(m.partner)}${m.owned ? ' ✓' : ''}</span></div>`).join('');
+      return `<button class="card r-${r.id}" data-i="${i}" style="--rc:${r.hex}">
+        <div class="card-glow"></div>
+        <div class="card-rarity">${r.name}<span class="pips">${pips}</span></div>
+        <div class="card-slot">${SLOT_INFO[of.slot].name} · ${SLOT_INFO[of.slot].key}</div>
+        <div class="card-icon">${esc(of.icon)}</div>
+        <div class="card-name">${esc(of.name)}</div>
+        <div class="card-lv">${esc(tag)}</div>
+        <div class="card-desc">${esc(of.desc)}</div>
+        <div class="card-marks">${marks}</div>
+        <div class="card-key">${i + 1}</div>
+      </button>`;
+    }
+    return `<button class="card r-${r.id}" data-i="${i}" style="--rc:${r.hex}">
+      <div class="card-glow"></div>
+      <div class="card-rarity">${r.name}<span class="pips">${pips}</span></div>
+      <div class="card-icon">${esc(of.icon)}</div>
+      <div class="card-name">${esc(of.name)}</div>
+      <div class="card-kind">Attribute</div>
+      <div class="card-desc">${esc(of.desc)}</div>
+      <div class="card-key">${i + 1}</div>
+    </button>`;
   }
 
   pickIndex(i) {
@@ -200,7 +232,7 @@ export class UI {
     el.classList.remove('hidden');
     $('#go-stats').innerHTML = [
       ['Depth reached', r.depth + 1], ['Time survived', fmtTime(r.time)], ['Level', r.level], ['Foes unmade', r.kills],
-      ['Bosses slain', r.bosses], ['Containers opened', r.chests], ['Longest combo', r.maxCombo], ['Damage dealt', Math.round(r.dmgDealt)],
+      ['Bosses slain', r.bosses], ['Containers opened', r.chests], ['Waves survived', r.waves || 0], ['Evolutions', r.evolutions || 0],
     ].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('');
     $('#go-echoes').textContent = `+${r.echoes}`;
     $('#go-total').textContent = r.total;
@@ -294,7 +326,7 @@ export class UI {
     const low = hpFrac < 0.3 && p.alive;
     e.portrait.classList.toggle('low', low);
     e.vignette.classList.toggle('low', low);
-    e.portrait.classList.toggle('hype', p.ult >= 1 || g.combo >= 20);
+    e.portrait.classList.toggle('hype', p.ult >= 1 || p.buffs.berserkT > 0);
     e.ultFill.style.width = `${p.ult * 100}%`;
     e.ultLabel.classList.toggle('ready', p.ult >= 1);
     e.ultBar.classList.toggle('ready', p.ult >= 1);
@@ -321,18 +353,14 @@ export class UI {
       if (this._lastObj !== undefined && kind !== this._lastObjKind) pop(e.objective, 'scale(1.25)', 'translateX(-50%) skewX(-10deg)');
       e.objective.innerHTML = obj; this._lastObj = obj; this._lastObjKind = kind;
     }
-    // combo
-    if (g.combo >= 3) {
-      e.combo.classList.add('on');
-      if (g.combo !== fx.combo) {
-        e.comboN.textContent = `${g.combo}`;
-        pop(e.comboN, `scale(${g.combo > fx.combo ? 1.6 : 0.6}) rotate(${(g.combo % 2 ? -1 : 1) * 8}deg)`);
-        const rank = g.comboRank();
-        if (rank !== e.comboR.textContent) { e.comboR.textContent = rank; pop(e.comboR, 'scale(2.2) rotate(-20deg)'); }
-      }
-      e.combo.style.setProperty('--heat', Math.min(1, g.combo / 40));
-    } else e.combo.classList.remove('on');
-    fx.combo = g.combo;
+    // wave tracker
+    const sp = g.spawner;
+    if (g.mode === 'open' && sp) {
+      const label = sp.active ? `${sp.kind === 'elite' ? 'Elite wave' : sp.kind === 'tide' ? 'Tide wave' : 'Wave'} ${g.wavesTotal}` : `Next wave ${Math.ceil(Math.max(0, sp.breathT))}s`;
+      if (label !== fx.wave) { e.waveLabel.textContent = label; fx.wave = label; e.wave.className = sp.active ? sp.kind : 'rest'; pop(e.waveLabel, 'scale(1.3)'); }
+      e.waveFill.style.width = `${(sp.active ? 1 - sp.progress : 0) * 100}%`;
+      e.wave.style.display = '';
+    } else e.wave.style.display = 'none';
     // boss
     if (g.boss && g.boss.alive && g.boss.state !== 'spawn') {
       e.boss.classList.remove('hidden');
@@ -345,22 +373,46 @@ export class UI {
       e.bossFill.style.width = `${bf * 100}%`;
       e.bossGhost.style.width = `${fx.bossGhost * 100}%`;
     } else e.boss.classList.add('hidden');
-    // weapon + abilities (only re-render on change)
-    const wkey = `${p.weapon.type}-${p.weapon.tier}`;
-    if (wkey !== this._lastWeapon) {
-      this._lastWeapon = wkey;
-      const r = RARITY[p.weapon.tier];
-      e.weapon.innerHTML = `<span class="w-icon">${p.weapon.def.icon}</span><span><b style="color:${r.hex}">${esc(p.weapon.def.name)}</b><br><small>${r.name}</small></span>`;
-      // replay the slide-in for the new weapon
-      e.weapon.style.animation = 'none'; void e.weapon.offsetWidth; e.weapon.style.animation = '';
-    }
-    const abKey = JSON.stringify(p.ab);
-    if (abKey !== this._lastAb) {
-      this._lastAb = abKey;
-      e.abilities.innerHTML = Object.entries(p.ab).map(([id, v]) => {
-        const u = UPGRADE_BY_ID[id];
-        return `<div class="ab" title="${esc(u.name)}"><span>${u.icon}</span><i>${v.toFixed(1)}</i></div>`;
+    this._updateSlots(g, p);
+    const bk = p.buffs.berserkT > 0 ? `<span class="buff">Berserk ${p.buffs.berserkT.toFixed(1)}s</span>` : '';
+    if (bk !== this._lastBuff) { e.buffs.innerHTML = bk; this._lastBuff = bk; }
+  }
+
+  /** The four-slot bar: rebuilt when the loadout changes, cooldowns and ammo updated every frame. */
+  _updateSlots(g, p) {
+    const L = p.loadout, fx = this.fx;
+    const ready = new Set(L.readyEvolutions(p.stats.evoDiscount || 0).map((r) => r.base));
+    const key = SLOTS.map((k) => { const s = L.get(k); return s ? `${s.id}:${s.level}` : '-'; }).join('|') + [...ready].join(',');
+    if (key !== fx.slotKey) {
+      fx.slotKey = key;
+      this.el.slots.innerHTML = SLOTS.map((k) => {
+        const s = L.get(k), info = SLOT_INFO[k];
+        if (!s) return `<div class="slot empty" data-slot="${k}"><div class="slot-key">${info.key} · ${info.name}</div></div>`;
+        const def = ITEMS[s.id];
+        const lv = def.evolved ? '<div class="slot-lv evo">EVOLVED</div>' : `<div class="slot-lv">${Array.from({ length: MAX_LEVEL }, (_, i) => `<i class="${i < s.level ? 'on' : ''}"></i>`).join('')}</div>`;
+        const marks = def.evolved ? '' : recipesFor(s.id).map((r) => {
+          const partner = r.base === s.id ? r.with : r.base;
+          return `<b class="${L.has(partner) ? 'lit' : ''}" style="--mc:${r.color}" title="${esc(ITEMS[r.into].name)}">${esc(r.mark)}</b>`;
+        }).join('');
+        return `<div class="slot${ready.has(s.id) ? ' ready-evo' : ''}" data-slot="${k}"><div class="slot-key">${info.key}</div><div class="slot-icon">${esc(def.icon)}</div><div class="slot-cd"></div>${lv}<div class="slot-marks">${marks}</div><span class="slot-ammo"></span><div class="slot-name">${esc(def.name)}</div></div>`;
       }).join('');
+      this._slotEls = {};
+      for (const el of this.el.slots.children) this._slotEls[el.dataset.slot] = el;
+    }
+    for (const k of SLOTS) {
+      const s = L.get(k), el = this._slotEls && this._slotEls[k];
+      if (!s || !el) continue;
+      const cd = s.max > 0 ? Math.max(0, s.cd) / s.max : 0;
+      const shown = k === 'arms' && cd < 0.99 ? 0 : cd;
+      el.style.setProperty('--cd', (s.state.reloadT > 0 ? 1 : shown).toFixed(3));
+      if (s.state.ammo !== undefined) {
+        const t = s.state.reloadT > 0 ? 'RELOAD' : `${s.state.ammo}`;
+        const a = el.querySelector('.slot-ammo');
+        if (a && a.textContent !== t) a.textContent = t;
+      }
+      // a pop the moment an ability comes off cooldown
+      if (s._wasCd && cd <= 0 && k !== 'arms') pop(el, 'scale(1.25)', 'skewX(-8deg)');
+      s._wasCd = cd > 0;
     }
   }
 
@@ -450,12 +502,39 @@ export class UI {
       }
     }
     if (g.state === 'play' && g.player.alive) {
-      const list = g.counterableEnemies(g.player.x, g.player.z, g.player.stats.counterRange);
-      if (list.length) this._banner(ctx, W / 2 + (two ? 3 : -3), H * 0.67 + (two ? -2 : 2), 'COUNTER!', 'Q', P.cyan, 30, -0.06);
-      if (g.player.ult >= 1) this._banner(ctx, W / 2, H * 0.745, 'REND REALITY READY', 'R', two ? P.gold : P.hi, 17, 0.04);
-      if (g.combo >= 10) this._banner(ctx, W / 2, H * 0.805, 'HEAVY ▸ TAKEDOWN', 'RMB', P.gold, 14, -0.04);
+      if (g.player.ult >= 1) this._banner(ctx, W / 2, H * 0.7, 'REND REALITY READY', 'R', two ? P.gold : P.hi, 17, 0.04);
+      if (g.timeStopT > 0) this._banner(ctx, W / 2 + (two ? 2 : -2), H * 0.2, 'TIME STOP', '', P.cyan, 30, -0.05);
+      if (g.lock && g.lock.alive) this._reticle(ctx, g, g.lock, W, H);
       if (!g.input.locked && !g.input.usingPad) this._banner(ctx, W / 2, H - 52, 'Click the screen to enable mouse look', '', P.paper, 13, 0, true);
     }
+  }
+
+  /** Lock-on reticle: four inked brackets that close in and step round on twos, plus the target's health. */
+  _reticle(ctx, g, e, W, H) {
+    const P = this.pal, t = this.tmp;
+    const hy = e.y + (e.boss ? (e.cy ? e.cy - e.y : 2.4 * e.size) : 1.1 * e.size);
+    if (!project(g.R.vp, e.x, hy, e.z, W, H, t)) return;
+    const r = clamp((e.boss ? 140 : 46) * e.size / Math.max(4, t[2]) * 6, 22, 120);
+    const step = Math.floor(g.time * 8) / 8;
+    ctx.save();
+    ctx.translate(t[0], t[1]);
+    ctx.rotate(step * 0.6);
+    for (let i = 0; i < 4; i++) {
+      ctx.rotate(Math.PI / 2);
+      ctx.beginPath(); ctx.moveTo(r, -r * 0.35); ctx.lineTo(r, -r); ctx.lineTo(r * 0.65, -r);
+      ctx.lineWidth = 7; ctx.strokeStyle = P.ink; ctx.stroke();
+      ctx.lineWidth = 3; ctx.strokeStyle = P.accent; ctx.stroke();
+    }
+    ctx.restore();
+    // health under the reticle
+    const w = 70, f = clamp(e.hp / e.maxHp, 0, 1);
+    ctx.save();
+    ctx.translate(t[0] - w / 2, t[1] + r + 14);
+    ctx.transform(1, 0, -0.35, 1, 0, 0);
+    ctx.fillStyle = P.ink; ctx.fillRect(-2, -2, w + 4, 9);
+    ctx.fillStyle = P.accent; ctx.fillRect(0, 0, w * f, 5);
+    ctx.restore();
+    this._inkText(ctx, e.name.toUpperCase(), t[0], t[1] + r + 30, `italic 13px ${DISPLAY}`, P.paper, 3, 2);
   }
 
   /** Display text with a hard ink outline and offset drop shadow. */

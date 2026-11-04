@@ -23,9 +23,14 @@ export class Input {
       left: ['KeyA', 'ArrowLeft'],
       right: ['KeyD', 'ArrowRight'],
       attack: ['Mouse0', 'KeyJ'],
-      heavy: ['Mouse2', 'KeyK'],
-      dodge: ['Space', 'ShiftLeft'],
-      counter: ['KeyQ', 'KeyF', 'KeyL'],
+      arms: ['Mouse2', 'KeyK'],
+      magic: ['KeyQ', 'KeyL'],
+      power: ['KeyF', 'KeyI'],
+      dodge: ['Space'],
+      sprint: ['ShiftLeft', 'ShiftRight'],
+      lock: ['Tab', 'Mouse1', 'KeyT'],
+      lockNext: ['WheelDown', 'KeyC'],
+      lockPrev: ['WheelUp', 'KeyZ'],
       interact: ['KeyE'],
       ultimate: ['KeyR'],
       pause: ['Escape', 'KeyP'],
@@ -53,6 +58,13 @@ export class Input {
     });
     window.addEventListener('mouseup', (e) => this.down.delete('Mouse' + e.button));
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    // the wheel switches lock-on targets
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const code = e.deltaY > 0 ? 'WheelDown' : 'WheelUp';
+      this._press(code);
+      this.down.delete(code);
+    }, { passive: false });
     window.addEventListener('mousemove', (e) => {
       if (this.locked) {
         this.mouseDX += e.movementX;
@@ -151,7 +163,8 @@ export class Input {
     this.padMove[1] = -dz(pad.axes[1] || 0);
     this.padLook[0] = dz(pad.axes[2] || 0) * 3.2 * dt;
     this.padLook[1] = dz(pad.axes[3] || 0) * 2.4 * dt;
-    const map = { 0: 'dodge', 2: 'attack', 3: 'heavy', 1: 'counter', 4: 'interact', 5: 'ultimate', 9: 'pause', 12: 'pick1', 13: 'pick2', 14: 'pick3', 15: 'pick4', 8: 'reroll' };
+    // A dodge, X blade, Y arms, B arcana, RB power, RT ultimate, LB interact, L3 sprint, R3/LT lock-on
+    const map = { 0: 'dodge', 2: 'attack', 3: 'arms', 1: 'magic', 5: 'power', 7: 'ultimate', 4: 'interact', 10: 'sprint', 11: 'lock', 6: 'lock', 9: 'pause', 12: 'pick1', 13: 'pick2', 14: 'pick3', 15: 'pick4', 8: 'reroll' };
     this.padHeld = {};
     for (const [idx, action] of Object.entries(map)) {
       const b = pad.buttons[idx];

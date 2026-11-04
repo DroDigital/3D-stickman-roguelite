@@ -1,13 +1,15 @@
-// The player: freeflow combat controller, movement, animation layering, weapon trails and cloth scarf.
+// The player: movement, sprint, dodge, the Blade slot's melee chain, lock-on facing, animation layering,
+// weapon trails and cloth scarf. The other three slots live in the Loadout (arsenal.js).
 import { HumanoidAnimator, humanoidTopology, CLIPS, J } from './humanoid.js';
 import { drawRig } from './rig.js';
 import { Anatomy, BODIES, castBody, drawBody, drawSkeleton } from './anatomy.js';
-import { makeWeapon, drawWeapon, weaponBasis, MOVES } from './weapons.js';
+import { makeWeapon, drawWeapon, weaponBasis, MOVES, WEAPONS } from './weapons.js';
+import { Loadout, ITEMS } from './arsenal.js';
 import { SHAPE } from '../gfx/particles.js';
 import { clamp, dampAngle } from '../core/math.js';
 import { PRIM } from '../gfx/renderer.js';
 
-const LUNGE_SPEED = 30;
+const SPRINT = 1.55;
 const tmpU = [0, 0, 0], tmpV = [0, 0, 0], tmpW = [0, 0, 0], tmpRef = [0, 0, 0];
 
 export class Player {
@@ -21,10 +23,10 @@ export class Player {
     this.radius = 0.45;
     this.level = 1;
     this.xp = 0;
-    this.xpNext = 8;
+    this.xpNext = 14;
     this.shards = 0;
-    this.ab = {};
     this.taken = {};
+    this.buffs = { berserkT: 0 };
     this.topo = humanoidTopology(0.042, 0.16);
     this.anim = new HumanoidAnimator(1);
     this.palette = [{ c: [0.86, 0.84, 0.8], e: 0.06 }];
@@ -37,27 +39,41 @@ export class Player {
     this.invulnT = 0;
     this.hurtFlash = 0;
     this.ult = 0;
-    this.target = null;
     this.move = null;
     this.hitDone = 0;
     this.alive = true;
+    this.sprinting = false;
     this.accF = 0; this.accS = 0;
     this.prevTip = null;
     this.prevBase = null;
     this.prevTipL = null;
     this.scarf = Array.from({ length: 8 }, () => ({ x: 0, y: 1.5, z: 0, px: 0, py: 1.5, pz: 0 }));
-    this.equip('fists', 0);
+    this.loadout = new Loadout(game);
+    this.weapon = makeWeapon('blade', 0);
+    this.loadout.slots.blade = { id: 'katana', level: 1, cd: 0, state: {} };
+    this.refreshBlade();
   }
 
-  equip(type, tier) {
-    this.weapon = makeWeapon(type, tier);
-    this.anim.stance = this.weapon.def.stance;
+  /** Rebuild the hand-held model and melee numbers from the Blade slot. */
+  refreshBlade() {
+    const s = this.loadout.slots.blade;
+    const def = s ? ITEMS[s.id] : ITEMS.katana;
+    const level = s ? s.level : 1;
+    const tier = def.evolved ? 5 : Math.min(4, level - 1);
+    this.weapon = makeWeapon(def.model, tier);
+    const st = def.stats(level);
+    this.weapon.dmg = st.dmg;
+    this.weapon.speed = st.speed;
+    this.weapon.combo = def.combo;
+    this.weapon.shock = st.shock || 0;
+    if (def.tint) { this.weapon.trailColor = def.tint; this.weapon.colors.glow = def.tint; }
+    this.anim.stance = WEAPONS[def.model].stance;
     this.comboIdx = 0;
     this.palette[0].e = 0.06 + tier * 0.015;
   }
 
   invuln() {
-    return this.invulnT > 0 || this.state === 'dodge' || this.state === 'counter' || this.state === 'finisher' || this.state === 'ult';
+    return this.invulnT > 0 || this.state === 'dodge' || this.state === 'ult' || this.state === 'dash';
   }
 
   get busy() { return this.state !== 'free'; }
@@ -69,11 +85,12 @@ export class Player {
   }
 
   // ------------------------------------------------------------ actions
-  _attackSpeed() { return this.weapon.def.speed * this.stats.atkSpeed; }
+  _attackSpeed() {
+    return this.weapon.speed * this.stats.atkSpeed * (this.buffs.berserkT > 0 ? 1.35 : 1);
+  }
 
-  _startMove(moveName, clip, target, flags = {}) {
+  _startMove(moveName, clip, flags = {}) {
     this.move = { name: moveName, ...MOVES[moveName], ...flags };
-    this.target = target;
     this.hitDone = 0;
     const speed = flags.speed ?? this._attackSpeed();
     this.anim.play(clip, speed);
@@ -81,62 +98,29 @@ export class Player {
     this.stateT = clip.dur / speed;
     this.clip = clip;
     this.game.audio.play(this.move.sfx, 0.8);
-    if (target) this.yaw = Math.atan2(target.x - this.x, target.z - this.z);
   }
 
-  _beginLunge(target, moveName, then) {
-    this.state = 'lunge';
-    this.target = target;
-    this.lungeMove = moveName;
-    this.lungeThen = then;
-    this.stateT = 0.45;
-    this.game.audio.play('dodge');
-  }
-
-  tryAttack(heavy = false) {
+  /** Direction the player wants to act in: the lock-on target, else stick/keys, else the camera. */
+  _actDir() {
     const g = this.game;
-    const w = this.weapon.def;
-    const dir = g.inputWorldDir();
-    const range = this.stats.lungeRange;
-    const target = g.findTarget(this.x, this.z, dir[0], dir[1], range);
-    // finisher: heavy with a high combo on a target
-    if (heavy && target && g.combo >= 10) {
-      const go = () => {
-        this._startMove('finisher', CLIPS.finisher, target, { state: 'finisher', speed: 1.1 });
-        g.slowmo(0.6, 0.3);
-        g.combo -= 5;
-      };
-      if (this._distTo(target) > this._reachFor('finisher', target) + 0.4) this._beginLunge(target, 'finisher', go); else go();
-      return;
-    }
-    let moveName, clip;
-    if (heavy) {
-      moveName = w.heavy;
-      clip = CLIPS[moveName];
-      this.comboIdx = 0;
-    } else {
-      // chaining from an active strike (recovery-cancel) keeps the combo going
-      const chaining = this.state === 'attack' || this.state === 'lunge';
-      if (this.comboWindow <= 0 && !chaining) this.comboIdx = 0;
-      moveName = w.light[this.comboIdx % w.light.length];
-      clip = CLIPS[moveName];
-      this.comboIdx++;
-    }
-    const go = () => this._startMove(moveName, clip, target, { heavy });
-    if (target) {
-      const d = this._distTo(target);
-      if (d > this._reachFor(moveName, target) + 0.2) { this._beginLunge(target, moveName, go); return; }
-    } else if (Math.hypot(dir[0], dir[1]) > 0.1) {
-      this.yaw = Math.atan2(dir[0], dir[1]);
-    }
-    go();
+    const t = g.lock;
+    if (t && t.alive) return [t.x - this.x, t.z - this.z];
+    const d = g.inputWorldDir();
+    if (Math.hypot(d[0], d[1]) > 0.1) return [d[0], d[1]];
+    return [g.camFwd[0], g.camFwd[2]];
   }
 
-  _distTo(e) { return Math.hypot(e.x - this.x, e.z - this.z); }
-
-  _reachFor(moveName, target) {
-    const m = MOVES[moveName];
-    return this.weapon.reach * m.reach * this.stats.reach * 0.75 + (target ? target.radius * (target.boss ? 1 : 0.8) : 0);
+  /** Blade slot: the next cut in the chain. No lunging: the cut lands where you stand. */
+  tryAttack() {
+    const w = this.weapon;
+    const chaining = this.state === 'attack';
+    if (this.comboWindow <= 0 && !chaining) this.comboIdx = 0;
+    const moveName = w.combo[this.comboIdx % w.combo.length];
+    this.comboIdx++;
+    const d = this._actDir();
+    if (Math.hypot(d[0], d[1]) > 1e-3) this.yaw = Math.atan2(d[0], d[1]);
+    this._startMove(moveName, CLIPS[moveName]);
+    this.sprinting = false;
   }
 
   tryDodge(dirX, dirZ) {
@@ -157,28 +141,36 @@ export class Player {
     return true;
   }
 
-  tryCounter() {
-    const g = this.game;
-    const list = g.counterableEnemies(this.x, this.z, this.stats.counterRange);
-    if (!list.length) return false;
-    const t = list[0];
-    // glide in beside the target
-    const dx = this.x - t.x, dz = this.z - t.z, d = Math.hypot(dx, dz) || 1;
-    const want = t.radius * (t.boss ? 1.1 : 1) + 1.0;
-    this.x = t.x + (dx / d) * want;
-    this.z = t.z + (dz / d) * want;
-    g.counterFx(this, t);
-    this.counterTargets = list.filter((e) => Math.hypot(e.x - this.x, e.z - this.z) < 4.5 || e === t);
-    for (const e of this.counterTargets) { e.telegraph = false; e.counterable = false; e.stagger(e.boss ? 1.6 : 1.3); g.cancelHazardsOf(e); }
-    this._startMove('counter', CLIPS.counter, t, { state: 'counter', counter: true, speed: 1.25 });
-    this.invulnT = 0.6;
-    return true;
+  /** Short invulnerable dash used by powers (Afterimage). */
+  dash(dx, dz, dist, dur) {
+    const l = Math.hypot(dx, dz) || 1;
+    this.state = 'dash';
+    this.stateT = dur;
+    this.dashV = [(dx / l) * (dist / dur), (dz / l) * (dist / dur)];
+    this.yaw = Math.atan2(dx, dz);
+    this.anim.play(CLIPS.dodge, CLIPS.dodge.dur / dur);
+  }
+
+  /** Brief casting gesture for Arcana and Power (doesn't interrupt a dash or dodge). */
+  castPose() {
+    if (this.state === 'free' || this.state === 'attack') {
+      const d = this._actDir();
+      if (Math.hypot(d[0], d[1]) > 1e-3) this.yaw = Math.atan2(d[0], d[1]);
+      this.anim.play(CLIPS.cast, CLIPS.cast.dur / 0.35);
+      this.state = 'cast';
+      this.stateT = 0.3;
+    }
+  }
+
+  /** Arms fire: turn toward the aim point. */
+  aimPose(aim) {
+    if (this.state === 'free' || this.state === 'cast') this.yaw = dampAngle(this.yaw, Math.atan2(aim.dx, aim.dz), 30, 1 / 30);
   }
 
   tryUltimate() {
     if (this.ult < 1) return false;
     this.ult = 0;
-    this._startMove('finisher', CLIPS.finisher, null, { state: 'ult', speed: 0.85, ultimate: true });
+    this._startMove('finisher', CLIPS.finisher, { state: 'ult', speed: 0.85, ultimate: true });
     this.game.slowmo(0.9, 0.35);
     this.game.audio.play('portal');
     return true;
@@ -186,13 +178,14 @@ export class Player {
 
   hurt(dmg, srcX, srcZ) {
     this.hp -= dmg;
-    this.invulnT = 0.45;
+    this.invulnT = 0.5;
     this.hurtFlash = 1;
     const dx = this.x - srcX, dz = this.z - srcZ, d = Math.hypot(dx, dz) || 1;
     this.vx += (dx / d) * 7; this.vz += (dz / d) * 7;
-    if (this.state === 'free' || this.state === 'attack') {
+    this.sprinting = false;
+    if (this.state === 'free' || this.state === 'attack' || this.state === 'cast') {
       this.state = 'hurt';
-      this.stateT = 0.22;
+      this.stateT = 0.28;
       this.anim.play(CLIPS.hit, 1);
     }
     this.anim.hitReact(1.2, Math.random() - 0.5);
@@ -207,7 +200,7 @@ export class Player {
   /** Trigger every hit threshold the active strike animation has passed. */
   _resolveHits() {
     const s = this.state;
-    if (s !== 'attack' && s !== 'counter' && s !== 'finisher' && s !== 'ult') return;
+    if (s !== 'attack' && s !== 'ult') return;
     const hits = this._clipHits();
     const p = this.anim.progress;
     while (this.hitDone < hits.length && p >= hits[this.hitDone]) {
@@ -228,81 +221,65 @@ export class Player {
     const mv = g.inputWorldDir();
     const mx = mv[0], mz = mv[1];
     const moving = Math.hypot(mx, mz) > 0.1;
+    const lock = g.lock && g.lock.alive ? g.lock : null;
 
-    // land any hit thresholds the current strike has already crossed before a follow-up can replace it
     this._resolveHits();
-    // buffered actions: an attack may only be recovery-cancelled once all of its hits have resolved
     const hits = this._clipHits();
     const attackDone = this.state === 'attack' && this.hitDone >= hits.length && this.anim.progress > (hits.length ? hits[hits.length - 1] : 0.5) + 0.08;
-    const canAct = this.state === 'free' || attackDone || this.state === 'hurt' && this.stateT < 0.08;
-    const canDodge = this.state !== 'dodge' && this.state !== 'finisher' && this.state !== 'ult' && this.state !== 'counter';
+    const canAct = this.state === 'free' || this.state === 'cast' && this.stateT < 0.12 || attackDone || this.state === 'hurt' && this.stateT < 0.08;
+    const canDodge = this.state !== 'dodge' && this.state !== 'ult' && this.state !== 'dash';
     if (input.consume('dodge') && canDodge) this.tryDodge(mx, mz);
-    else if (input.peek('counter') && this.state !== 'dodge' && this.state !== 'counter' && this.state !== 'ult') {
-      input.consume('counter');
-      this.tryCounter();
-    } else if (input.peek('ultimate') && canAct && this.ult >= 1) { input.consume('ultimate'); this.tryUltimate(); }
-    else if (canAct && input.peek('attack')) { input.consume('attack'); this.tryAttack(false); }
-    else if (canAct && input.peek('heavy')) { input.consume('heavy'); this.tryAttack(true); }
+    else if (input.peek('ultimate') && canAct && this.ult >= 1) { input.consume('ultimate'); this.tryUltimate(); }
+    else if (canAct && (input.peek('attack') || input.held('attack') && this.state !== 'attack')) { input.consume('attack'); this.tryAttack(); }
+    if (input.peek('magic') && this.state !== 'ult') { input.consume('magic'); this.loadout.trigger('magic'); }
+    if (input.peek('power') && this.state !== 'ult') { input.consume('power'); this.loadout.trigger('power'); }
+    // Arms fire while held; sprinting, dodging and dashing hold fire
+    const canFire = this.alive && this.state !== 'dodge' && this.state !== 'dash' && this.state !== 'ult' && !this.sprinting;
+    this.loadout.update(dt, input, canFire);
+
+    // sprint: hold while moving freely; any action ends it
+    this.sprinting = input.held('sprint') && moving && this.state === 'free' && !input.held('arms');
 
     let wantVX = 0, wantVZ = 0, accel = 14;
     this.stateT -= dt;
     switch (this.state) {
-      case 'free': {
-        const sp = st.moveSpeed;
+      case 'free':
+      case 'cast': {
+        const sp = st.moveSpeed * (this.sprinting ? SPRINT * st.sprintMul : 1) * (this.state === 'cast' ? 0.5 : 1);
         wantVX = mx * sp; wantVZ = mz * sp;
-        if (moving) this.yaw = dampAngle(this.yaw, Math.atan2(mx, mz), 14, dt);
-        break;
-      }
-      case 'lunge': {
-        const t = this.target;
-        if (!t || !t.alive) { this.state = 'free'; break; }
-        const dx = t.x - this.x, dz = t.z - this.z, d = Math.hypot(dx, dz) || 1;
-        this.yaw = Math.atan2(dx, dz);
-        const stop = this._reachFor(this.lungeMove || 'jab', t) * 0.85;
-        const step = LUNGE_SPEED * dt;
-        if (d - step <= stop || this.stateT <= 0) {
-          const k = Math.max(0, d - stop) / d;
-          this.x += dx * k; this.z += dz * k;
-          this.vx = this.vz = 0;
-          this.state = 'free';
-          const then = this.lungeThen;
-          this.lungeThen = null;
-          if (then) then();
-        } else {
-          this.vx = (dx / d) * LUNGE_SPEED; this.vz = (dz / d) * LUNGE_SPEED;
-          this.x += this.vx * dt; this.z += this.vz * dt;
-          g.lungeFx(this);
-        }
-        wantVX = this.vx; wantVZ = this.vz;
-        accel = 0;
+        if (lock && !this.sprinting) this.yaw = dampAngle(this.yaw, Math.atan2(lock.x - this.x, lock.z - this.z), 12, dt);
+        else if (moving) this.yaw = dampAngle(this.yaw, Math.atan2(mx, mz), 14, dt);
+        if (this.state === 'cast' && this.stateT <= 0) this.state = 'free';
         break;
       }
       case 'attack':
-      case 'counter':
-      case 'finisher':
       case 'ult': {
-        const t = this.target;
-        if (t && t.alive) this.yaw = dampAngle(this.yaw, Math.atan2(t.x - this.x, t.z - this.z), 20, dt);
+        if (lock) this.yaw = dampAngle(this.yaw, Math.atan2(lock.x - this.x, lock.z - this.z), 16, dt);
         const p = this.anim.progress;
-        // small forward step during the strike
-        const push = p < (this.clip.hitT || 0.4) ? 2.2 : 0.3;
-        wantVX = Math.sin(this.yaw) * push + mx * 1.2;
-        wantVZ = Math.cos(this.yaw) * push + mz * 1.2;
+        // small committed step into each cut
+        const push = p < (this.clip.hitT || 0.4) ? 1.8 : 0.2;
+        wantVX = Math.sin(this.yaw) * push + mx * 1.0;
+        wantVZ = Math.cos(this.yaw) * push + mz * 1.0;
         this._resolveHits();
         if (!this.anim.playing || this.stateT <= -0.05) {
           this.state = 'free';
-          this.comboWindow = 0.55;
+          this.comboWindow = 0.5;
         }
         break;
       }
       case 'dodge': {
         const k = clamp(this.stateT / 0.4, 0, 1);
-        const sp = 15 * (0.4 + k * 0.9);
+        const sp = 14 * (0.4 + k * 0.9);
         wantVX = this.dodgeDir[0] * sp; wantVZ = this.dodgeDir[1] * sp;
         accel = 30;
         if (this.stateT <= 0) this.state = 'free';
         break;
       }
+      case 'dash':
+        wantVX = this.dashV[0]; wantVZ = this.dashV[1];
+        accel = 60;
+        if (this.stateT <= 0) { this.state = 'free'; this.vx *= 0.3; this.vz *= 0.3; }
+        break;
       case 'hurt':
         if (this.stateT <= 0) this.state = 'free';
         break;
@@ -313,29 +290,24 @@ export class Player {
         break;
     }
 
-    if (this.state !== 'lunge') {
-      const pvx = this.vx, pvz = this.vz;
-      this.vx += (wantVX - this.vx) * Math.min(1, dt * accel);
-      this.vz += (wantVZ - this.vz) * Math.min(1, dt * accel);
-      this.x += this.vx * dt; this.z += this.vz * dt;
-      // acceleration in local frame for lean
-      const ax = (this.vx - pvx) / Math.max(dt, 1e-4), az = (this.vz - pvz) / Math.max(dt, 1e-4);
-      const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
-      this.accF += ((ax * s + az * c) - this.accF) * Math.min(1, dt * 8);
-      this.accS += ((ax * c - az * s) - this.accS) * Math.min(1, dt * 8);
-    }
+    const pvx = this.vx, pvz = this.vz;
+    this.vx += (wantVX - this.vx) * Math.min(1, dt * accel);
+    this.vz += (wantVZ - this.vz) * Math.min(1, dt * accel);
+    this.x += this.vx * dt; this.z += this.vz * dt;
+    // acceleration in local frame for lean
+    const ax = (this.vx - pvx) / Math.max(dt, 1e-4), az = (this.vz - pvz) / Math.max(dt, 1e-4);
+    const s0 = Math.sin(this.yaw), c0 = Math.cos(this.yaw);
+    this.accF += ((ax * s0 + az * c0) - this.accF) * Math.min(1, dt * 8);
+    this.accS += ((ax * c0 - az * s0) - this.accS) * Math.min(1, dt * 8);
     g.world.resolve(this, this.radius);
-    if (this.state !== 'dodge' && this.state !== 'lunge') g.pushFromEnemies(this);
+    if (this.state !== 'dodge' && this.state !== 'dash') g.pushFromEnemies(this);
     g.world.clampToBounds(this);
     this.y = g.world.height(this.x, this.z);
 
     // animation
     const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
     let fwd = this.vx * s + this.vz * c, side = this.vx * c - this.vz * s;
-    if (this.state === 'lunge') {
-      // sprint pose
-      fwd = 14; side = 0;
-    }
+    if (this.state === 'dash') { fwd = 14; side = 0; }
     this.anim.update(dt, {
       fwdSpeed: fwd, sideSpeed: side, accF: this.accF, accS: this.accS, combat: g.inCombat ? 1 : 0,
       x: this.x, y: this.y, z: this.z, yaw: this.yaw, ground: (x, z) => g.world.height(x, z),
@@ -397,7 +369,7 @@ export class Player {
   }
 
   _trail() {
-    const active = this.state === 'attack' || this.state === 'counter' || this.state === 'finisher' || this.state === 'ult';
+    const active = this.state === 'attack' || this.state === 'ult';
     const pts = this.weaponPoints(this._wp || (this._wp = new Float32Array(9)));
     const isFists = this.weapon.type === 'fists';
     if (isFists) {
@@ -498,8 +470,8 @@ export class Player {
         R.trs(PRIM.OCTA, this.x + Math.cos(a) * 0.9, this.y + 1.3 + Math.sin(a * 2) * 0.15, this.z + Math.sin(a) * 0.9, a, 0, 0, 0.05, 0.12, 0.05, eye, 2.5);
       }
     }
-    // dodge afterimages
-    if (this.state === 'dodge' && Math.random() < 0.8) {
+    // dodge / dash afterimages
+    if ((this.state === 'dodge' || this.state === 'dash') && Math.random() < 0.8) {
       const i = ((Math.random() * 16) | 0) * 3;
       g.particles.emit({ x: P[i], y: P[i + 1], z: P[i + 2], life: 0.25, size: 0.18, size1: 0, color: [0.7, 0.75, 1], alpha: 0.5, shape: SHAPE.GLOW });
     }
