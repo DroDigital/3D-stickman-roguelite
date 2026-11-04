@@ -3,7 +3,7 @@
 import { MAX_LIGHTS } from './shaders.js';
 
 /**
- * Art-style presets. `retro` is the original look and stays the default; the others are previz candidates.
+ * Art-style presets. `requiem` (Ink Requiem) is the game's look; `retro` is the original low-poly look, kept as an option.
  * toon: use the cel pipeline; bands: 1 flat, 2 or 3 light bands; tone: 0 none, 1 halftone dots, 2 hatching;
  * ink: outline strength; inkW: outline width in low-res pixels; boil: hand-drawn line jitter (px);
  * boilFps: how often the drawn line "re-traces"; onTwos: held-pose animation rate (0 = every frame);
@@ -34,7 +34,7 @@ const NEON = {
 
 /**
  * Art packs: each bundles a render style, a cast of character designs (anatomy.js CASTS) and a sound set.
- * `retro` is the original look and stays the default. Ids with a "+" are mix-and-match combinations.
+ * `requiem` is the default; `retro` is the original look. Ids with a "+" are mix-and-match combinations.
  * Render fields — bands: 1 flat, 2 or 3 light bands; tone: 0 none, 1 halftone, 2 hatching; ink: outline strength;
  * inkW: outline width (low-res px); boil: hand-drawn line jitter; onTwos: held-pose animation rate (0 = every frame);
  * mono: manga desaturation (keeps reds); paper: paper grain; ortho: pseudo-3D orthographic camera.

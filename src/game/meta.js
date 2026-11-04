@@ -41,12 +41,15 @@ export const SKILLS = [
 
 export const SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s]));
 
+/** Ink Requiem (asset pack 1) is the game's look; the others stay selectable in Settings. */
+export const DEFAULT_STYLE = 'requiem';
+
 export function defaultSave() {
   return {
     echoes: 0,
     ranks: { core: 1 },
     stats: { runs: 0, bestDepth: 0, kills: 0, bosses: 0, bestTime: 0 },
-    settings: { quality: 432, volume: 0.6, sensitivity: 1, shake: 1, style: 'retro' },
+    settings: { quality: 432, volume: 0.6, sensitivity: 1, shake: 1, style: DEFAULT_STYLE, styleChosen: false },
   };
 }
 
@@ -62,7 +65,10 @@ export class Meta {
       if (raw) {
         const d = JSON.parse(raw);
         const base = defaultSave();
-        return { ...base, ...d, ranks: { ...base.ranks, ...d.ranks }, stats: { ...base.stats, ...d.stats }, settings: { ...base.settings, ...d.settings } };
+        const settings = { ...base.settings, ...d.settings };
+        // older saves stored the then-default 'retro' without the player choosing it: move them to the new look
+        if (!settings.styleChosen) settings.style = DEFAULT_STYLE;
+        return { ...base, ...d, ranks: { ...base.ranks, ...d.ranks }, stats: { ...base.stats, ...d.stats }, settings };
       }
     } catch { /* corrupted or unavailable storage */ }
     return defaultSave();

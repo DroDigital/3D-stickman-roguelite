@@ -243,7 +243,7 @@ export class Renderer {
 
   /** Switch art style preset (see gfx/toon.js). Returns the active preset. */
   setStyle(id) {
-    const st = T.STYLES[id] || T.STYLES.retro;
+    const st = T.STYLES[id] || T.STYLES.requiem;
     this.style = st;
     this.snap = !st.toon;
     this.levels = st.toon ? 0 : 28;

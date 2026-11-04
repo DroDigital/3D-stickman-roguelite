@@ -247,3 +247,12 @@ test('anatomy expands the 16-joint pose into a stable 28-joint skeleton with set
     }
   }
 });
+
+test('Ink Requiem is the default art style; old saves move to it unless the player picked a style', () => {
+  const mem = (data) => { const m = new Map(data ? [['k', JSON.stringify(data)]] : []); return { getItem: () => (m.has('k') ? m.get('k') : null), setItem: (_, v) => m.set('k', v) }; };
+  assert.equal(new Meta(mem()).data.settings.style, 'requiem');
+  // a save from before the art direction was chosen stored the old default
+  assert.equal(new Meta(mem({ settings: { style: 'retro' } })).data.settings.style, 'requiem');
+  // an explicit choice is kept
+  assert.equal(new Meta(mem({ settings: { style: 'retro', styleChosen: true } })).data.settings.style, 'retro');
+});

@@ -1,6 +1,6 @@
 # Abyssal Stride
 
-A third-person retro 3D stickman roguelite set in a cosmic-horror / dark-fantasy abyss. Freeflow combat, procedural worlds, tiered loot, bosses and a persistent skill tree. Everything is plain JavaScript and WebGL2. There is no engine, no framework, no build step, no assets and no runtime dependencies.
+A third-person hand-drawn anime 3D roguelite set in a cosmic-horror / dark-fantasy abyss. Freeflow combat, procedural worlds, tiered loot, bosses and a persistent skill tree. Everything is plain JavaScript and WebGL2. There is no engine, no framework, no build step, no assets and no runtime dependencies.
 
 ## Run it
 
@@ -105,18 +105,18 @@ Each dimension has its own lighting, fog, sky (with a nebula and a watching ecli
 - Spring-driven secondary motion covers leaning into acceleration and hit reactions.
 - Keyframed action clips include rolls and flips.
 
-**Retro look**
+**Original retro look** (still selectable as `retro`)
 - The scene renders at a low internal resolution with vertex snapping and is upscaled nearest-neighbour.
 - Post-processing adds ordered dithering with colour quantisation, bloom, chromatic aberration, a reality-warp effect, film grain and a vignette.
 
-## Asset packs (previz)
+## Art style: Ink Requiem
 
-The look is switchable while the hand-drawn direction is chosen. Pick one in **Settings → Art style**, or open the game with `?style=` in the URL, for example `http://localhost:8080/?style=sutra`. Each pack bundles a render style, its own cast of character designs, effects, animation timing, a camera and a sound set.
+The game's look is **Ink Requiem**: 90s OVA colour cel shading with black boiling ink lines, drawn on twos, with an anime sound set. It was chosen from three asset packs; the others stay available in **Settings → Art style**, or with `?style=` in the URL, for example `http://localhost:8080/?style=sutra`. Each pack bundles a render style, its own cast of character designs, effects, animation timing, a camera and a sound set.
 
 | Pack | Id | Render | Cast | Camera and timing | Sound |
 | --- | --- | --- | --- | --- | --- |
-| Current | `retro` | Smooth lighting, dithered, no outlines | Stick figures | Perspective, full frame rate | Retro synth |
-| 1 · Ink Requiem | `requiem` | 90s OVA colour cel, black boiling ink | Silver-haired swordsman in an indigo long coat | Perspective, on twos | Anime: shings, bells, sparkles |
+| Original | `retro` | Smooth lighting, dithered, no outlines | Stick figures | Perspective, full frame rate | Retro synth |
+| **1 · Ink Requiem (default)** | `requiem` | 90s OVA colour cel, black boiling ink | Silver-haired swordsman in an indigo long coat | Perspective, on twos | Anime: shings, bells, sparkles |
 | 2 · Black Sutra | `sutra` | Monochrome manga screentone, red survives | Ponytailed swordswoman, talisman ghouls, oni brute | Perspective, on twos | Taiko: drums, clacks, flute, chimes |
 | 3 · Paper Lantern | `lantern` | Storybook cut-out, thick brush lines, hatching | Button-eyed lantern bearer, rag dolls, paper ghosts | Pseudo-3D orthographic diorama, on threes | Folk: woodblocks, music box, kalimba |
 

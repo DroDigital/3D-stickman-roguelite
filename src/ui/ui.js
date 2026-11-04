@@ -56,8 +56,8 @@ export class UI {
     q.value = String(st.quality); v.value = String(st.volume); s.value = String(st.sensitivity); sh.value = String(st.shake);
     q.onchange = () => { st.quality = Number(q.value); if (!game.style || !game.style.toon) game.R.setQuality(st.quality); this.meta.save(); };
     const sty = $('#set-style');
-    sty.value = game.style ? game.style.id : 'retro';
-    sty.onchange = () => { st.style = sty.value; game.setStyle(st.style); this.meta.save(); };
+    sty.value = game.style ? game.style.id : 'requiem';
+    sty.onchange = () => { st.style = sty.value; st.styleChosen = true; game.setStyle(st.style); this.meta.save(); };
     v.oninput = () => { st.volume = Number(v.value); this.audio.setVolume(st.volume); this.meta.save(); };
     s.oninput = () => { st.sensitivity = Number(s.value); this.meta.save(); };
     sh.oninput = () => { st.shake = Number(sh.value); this.meta.save(); };
