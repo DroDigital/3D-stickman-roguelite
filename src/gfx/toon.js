@@ -161,7 +161,10 @@ void main(){
   float fog = smoothstep(u_fog.x, u_fog.y, dist);
   fog = floor(fog * u_fogBands + 0.5) / u_fogBands;
   o_col = vec4(mix(c, u_fogCol, fog), 1.0);
-  float dep = clamp(dist / 220.0, 0.0, 0.9999);
+  // outline depth stays positive: in the orthographic diorama the camera sits far back, so only part of the
+  // fog offset is removed (removing all of it clamps nearby geometry to zero and inks a band across the screen)
+  float inkDist = length(v_wpos - u_camPos) - u_fogOffset * 0.7;
+  float dep = clamp(inkDist / 220.0, 0.0, 0.9999);
   float hi = floor(dep * 255.0) / 255.0;
   o_gbuf = vec4(octEncode(n), hi, fract(dep * 255.0));
 }`;
