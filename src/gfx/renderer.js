@@ -305,12 +305,21 @@ export class Renderer {
   }
 
   // ---------------------------------------------------------------- terrain / static
-  setTerrain(meshData) {
+  /** Terrain meshes: `meshData` is the faceted retro mesh, `smoothData` (optional) the painted mesh the toon styles draw. */
+  setTerrain(meshData, smoothData) {
+    for (const t of [this.terrain, this.terrainSmooth]) this._freeMesh(t);
+    this.terrain = this._uploadMesh(meshData);
+    this.terrainSmooth = smoothData ? this._uploadMesh(smoothData) : null;
+  }
+
+  _freeMesh(t) {
+    if (!t) return;
+    this.gl.deleteBuffer(t.buf);
+    this.gl.deleteVertexArray(t.vao);
+  }
+
+  _uploadMesh(meshData) {
     const gl = this.gl;
-    if (this.terrain) {
-      gl.deleteBuffer(this.terrain.buf);
-      gl.deleteVertexArray(this.terrain.vao);
-    }
     const vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
     const buf = gl.createBuffer();
@@ -324,7 +333,7 @@ export class Renderer {
     gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 36, 24);
     for (let i = 3; i < 8; i++) gl.disableVertexAttribArray(i);
     gl.bindVertexArray(null);
-    this.terrain = { vao, buf, count: meshData.length / 9 };
+    return { vao, buf, count: meshData.length / 9 };
   }
 
   clearStatic() { for (const b of this.stat) b.count = 0; }
@@ -521,15 +530,16 @@ export class Renderer {
     gl.uniform4fv(p.u.u_lightPos, this.lightPos);
     gl.uniform4fv(p.u.u_lightCol, this.lightCol);
 
-    if (this.terrain) {
+    const terrain = (toon && this.terrainSmooth) || this.terrain;
+    if (terrain) {
       if (toon) gl.uniform1f(p.u.u_ground, 1);
-      gl.bindVertexArray(this.terrain.vao);
+      gl.bindVertexArray(terrain.vao);
       gl.vertexAttrib4f(3, 1, 0, 0, 0);
       gl.vertexAttrib4f(4, 0, 1, 0, 0);
       gl.vertexAttrib4f(5, 0, 0, 1, 0);
       gl.vertexAttrib4f(6, 0, 0, 0, 1);
       gl.vertexAttrib4f(7, 1, 1, 1, 0);
-      gl.drawArrays(gl.TRIANGLES, 0, this.terrain.count);
+      gl.drawArrays(gl.TRIANGLES, 0, terrain.count);
       if (toon) gl.uniform1f(p.u.u_ground, 0);
     }
     for (const b of this.stat) b.draw();

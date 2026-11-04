@@ -1028,7 +1028,7 @@ export class Game {
       dist = 80;
       this.R.orthoDist = dist;
       // zoom follows the usual camera distance (closer framing for model sheets, wider for bosses)
-      this.R.orthoSize = this.camDist * 0.9 + (this.boss && this.boss.alive ? 3 : 0);
+      this.R.orthoSize = this.camDist * 0.75 + (this.boss && this.boss.alive ? 3 : 0);
     }
     const cp = Math.cos(pitch), sp = Math.sin(pitch);
     const fx = Math.sin(this.camYaw) * cp, fy = -sp, fz = Math.cos(this.camYaw) * cp;

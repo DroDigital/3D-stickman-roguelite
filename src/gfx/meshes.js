@@ -119,8 +119,11 @@ export function octaMesh() {
   return new Float32Array(o);
 }
 
-/** Height-field terrain mesh with per-vertex colors, flat shaded. */
-export function terrainMesh(n, size, heightFn, colorFn) {
+/**
+ * Height-field terrain mesh. Default: flat shaded, one colour per triangle (retro facets).
+ * `smooth`: shared per-vertex colours and normals, so colour washes blend across triangles (painted toon ground).
+ */
+export function terrainMesh(n, size, heightFn, colorFn, smooth = false) {
   const step = size / n;
   const half = size / 2;
   const H = new Float32Array((n + 1) * (n + 1));
@@ -129,6 +132,37 @@ export function terrainMesh(n, size, heightFn, colorFn) {
   }
   const data = new Float32Array(n * n * 6 * 9);
   let k = 0;
+  if (smooth) {
+    const w = n + 1;
+    const N = new Float32Array(w * w * 3), C = new Float32Array(w * w * 3);
+    for (let j = 0; j <= n; j++) {
+      for (let i = 0; i <= n; i++) {
+        const hx = H[j * w + Math.min(i + 1, n)] - H[j * w + Math.max(i - 1, 0)];
+        const hz = H[Math.min(j + 1, n) * w + i] - H[Math.max(j - 1, 0) * w + i];
+        const sx = (Math.min(i + 1, n) - Math.max(i - 1, 0)) * step, sz = (Math.min(j + 1, n) - Math.max(j - 1, 0)) * step;
+        let nx = -hx / sx, ny = 1, nz = -hz / sz;
+        const l = Math.hypot(nx, ny, nz);
+        nx /= l; ny /= l; nz /= l;
+        const v = (j * w + i) * 3;
+        N[v] = nx; N[v + 1] = ny; N[v + 2] = nz;
+        const c = colorFn(i * step - half, H[j * w + i], j * step - half, ny);
+        C[v] = c[0]; C[v + 1] = c[1]; C[v + 2] = c[2];
+      }
+    }
+    const vert = (i, j) => {
+      const v = (j * w + i) * 3;
+      data[k++] = i * step - half; data[k++] = H[j * w + i]; data[k++] = j * step - half;
+      data[k++] = N[v]; data[k++] = N[v + 1]; data[k++] = N[v + 2];
+      data[k++] = C[v]; data[k++] = C[v + 1]; data[k++] = C[v + 2];
+    };
+    for (let j = 0; j < n; j++) {
+      for (let i = 0; i < n; i++) {
+        vert(i, j); vert(i, j + 1); vert(i + 1, j + 1);
+        vert(i, j); vert(i + 1, j + 1); vert(i + 1, j);
+      }
+    }
+    return { data, heights: H, n, size, step };
+  }
   const put = (x, y, z, nx, ny, nz, c) => {
     data[k++] = x; data[k++] = y; data[k++] = z;
     data[k++] = nx; data[k++] = ny; data[k++] = nz;

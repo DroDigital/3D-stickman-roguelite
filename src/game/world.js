@@ -154,7 +154,8 @@ export class World {
     this.heights = mesh.heights;
     this.step = mesh.step;
     this.half = this.size / 2;
-    this.R.setTerrain(mesh.data);
+    // the hand-drawn styles paint the ground in soft washes instead of per-triangle facets
+    this.R.setTerrain(mesh.data, terrainMesh(this.n, this.size, (x, z) => this.rawHeight(x, z), colorFn, true).data);
   }
 
   /** Exact height matching the rendered triangle mesh. */
