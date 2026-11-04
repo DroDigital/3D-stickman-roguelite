@@ -52,6 +52,8 @@ await page.evaluate(() => {
       if (g.state === 'levelup') g.ui.pickIndex(0);
       upd(dt);
       ren(dt);
+      // flush each frame: driving frames in a tight loop otherwise queues GPU work and balloons memory
+      g.R.gl.finish();
       if (capture) frames.push({ img: canvas.toDataURL('image/jpeg', 0.9), impact: g.R.post_.impact });
     }
     return frames;
@@ -124,6 +126,7 @@ if (style === 'requiem') {
         for (const v of ['stick', 'skeleton', 'model']) {
           g.bodyView = v;
           window.__ren(v === 'stick' ? 1 / 24 : 0);
+          g.R.gl.finish();
           out[v].push(canvas.toDataURL('image/jpeg', 0.85));
         }
       }
