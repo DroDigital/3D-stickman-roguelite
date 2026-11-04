@@ -14,6 +14,7 @@ class Pool {
     this.r = F(); this.g = F(); this.b = F(); this.a = F();
     this.drag = F(); this.grav = F(); this.bounce = F();
     this.shape = new Uint8Array(cap);
+    this.amb = new Uint8Array(cap);
   }
 
   spawn() {
@@ -34,15 +35,18 @@ class Pool {
     this.r[i] = this.r[j]; this.g[i] = this.g[j]; this.b[i] = this.b[j]; this.a[i] = this.a[j];
     this.drag[i] = this.drag[j]; this.grav[i] = this.grav[j]; this.bounce[i] = this.bounce[j];
     this.shape[i] = this.shape[j];
+    this.amb[i] = this.amb[j];
   }
 }
 
 export class Particles {
   constructor(renderer) {
     this.r = renderer;
-    this.add = new Pool(9000);
-    this.alpha = new Pool(6000);
+    this.add = new Pool(16000);
+    this.alpha = new Pool(11000);
     this.ground = () => -1e9;
+    // a moving wind body (the sprinting player) that shoves ambient particles aside and drags them along
+    this.field = { x: 0, y: 0, z: 0, vx: 0, vz: 0, r: 0, k: 0 };
   }
 
   clear() { this.add.n = 0; this.alpha.n = 0; }
@@ -58,6 +62,7 @@ export class Particles {
     p.r[i] = c[0]; p.g[i] = c[1]; p.b[i] = c[2]; p.a[i] = o.alpha ?? 1;
     p.drag[i] = o.drag ?? 1; p.grav[i] = o.grav ?? 0; p.bounce[i] = o.bounce ?? -1;
     p.shape[i] = o.shape ?? 0;
+    p.amb[i] = o.amb ? 1 : 0;
   }
 
   /** Spherical burst. */
@@ -88,9 +93,21 @@ export class Particles {
 
   _sim(p, dt, batch, stretchSparks) {
     const ground = this.ground;
+    const F = this.field, fr2 = F.r * F.r, fk = F.k;
     for (let i = p.n - 1; i >= 0; i--) {
       p.life[i] -= dt;
       if (p.life[i] <= 0) { p.kill(i); continue; }
+      if (fk > 0 && p.amb[i]) {
+        const dx = p.x[i] - F.x, dy = p.y[i] - F.y, dz = p.z[i] - F.z;
+        const d2 = dx * dx + dz * dz + dy * dy * 0.3;
+        if (d2 < fr2) {
+          // pushed out of the way, then swept along in the wake
+          const d = Math.sqrt(d2) || 1, w = (1 - d / F.r) * fk * dt;
+          p.vx[i] += (dx / d) * w * 9 + F.vx * w * 1.6;
+          p.vz[i] += (dz / d) * w * 9 + F.vz * w * 1.6;
+          p.vy[i] += w * 2.5;
+        }
+      }
       const dr = Math.exp(-p.drag[i] * dt);
       p.vx[i] *= dr; p.vy[i] *= dr; p.vz[i] *= dr;
       p.vy[i] -= p.grav[i] * dt;

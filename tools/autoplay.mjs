@@ -1,4 +1,4 @@
-// Autopilot soak test: an in-page bot plays the game (fights, counters, dodges, loots, takes portals)
+// Autopilot soak test: an in-page bot plays the game (locks on, uses all four slots, dodges, loots, takes portals)
 // and reports progression stats. Usage: node tools/autoplay.mjs [gameSeconds] [outDir]
 import { createRequire } from 'node:module';
 import { spawn, execSync } from 'node:child_process';
@@ -36,7 +36,7 @@ await page.waitForFunction(() => !window.__game.transition && window.__game.stat
 await page.evaluate(() => {
   const g = window.__game;
   const inp = g.input;
-  const bot = { t: 0, log: { counters: 0, dodges: 0, chests: 0, portals: 0, levelups: 0, maxDepth: 0, maxCombo: 0 } };
+  const bot = { t: 0, log: { casts: 0, dodges: 0, chests: 0, portals: 0, levelups: 0, maxDepth: 0, waves: 0 } };
   window.__bot = bot;
   const press = (code) => { inp._press(code); inp.down.delete(code); };
   let moveX = 0, moveZ = 0;
@@ -55,10 +55,9 @@ await page.evaluate(() => {
     } else if (g.state === 'play' && g.player.alive) {
       const p = g.player;
       bot.log.maxDepth = Math.max(bot.log.maxDepth, g.depth);
-      bot.log.maxCombo = Math.max(bot.log.maxCombo, g.combo);
+      bot.log.waves = g.wavesTotal || 0;
       // threats
       const danger = g.hazards.find((h) => h.owner === 'enemy' && Math.hypot(h.x - p.x, h.z - p.z) < h.r + 0.8);
-      const counterable = g.counterableEnemies(p.x, p.z, p.stats.counterRange);
       let goal = null;
       if (g.world.exitPortal) goal = g.world.exitPortal;
       else if (g.world.portal) goal = g.world.portal;
@@ -75,8 +74,13 @@ await page.evaluate(() => {
       const l = Math.hypot(dx, dz) || 1;
       moveX = dx / l * (dx || dz ? 1 : 0); moveZ = dz / l * (dx || dz ? 1 : 0);
       if (danger && p.dodgeCd <= 0) { press('Space'); bot.log.dodges++; }
-      else if (counterable.length && Math.random() < 0.7) { press('KeyQ'); bot.log.counters++; }
-      else if (target && Math.hypot(target.x - p.x, target.z - p.z) < 10) press(Math.random() < 0.15 ? 'KeyK' : 'KeyJ');
+      else if (target && Math.hypot(target.x - p.x, target.z - p.z) < 10) {
+        if (!g.lock) press('Tab');
+        press('KeyJ');
+        if (Math.random() < 0.05) { press('KeyQ'); press('KeyF'); bot.log.casts++; }
+      }
+      // hold Arms fire whenever something is in range
+      if (target && Math.hypot(target.x - p.x, target.z - p.z) < 22) inp.down.add('Mouse2'); else inp.down.delete('Mouse2');
       if (p.ult >= 1) press('KeyR');
       const chest = g.nearChest;
       if (chest && g.world.chestCost(chest, p.stats.chestDiscount) <= p.shards) { press('KeyE'); bot.log.chests++; }
@@ -92,7 +96,7 @@ while (true) {
   await page.waitForTimeout(4000);
   const s = await page.evaluate(() => {
     const g = window.__game;
-    return { state: g.state, time: g.run ? g.run.time : 0, hp: g.player.hp, lvl: g.player.level, kills: g.run?.kills, depth: g.depth, mode: g.mode, enemies: g.enemies.length, fps: g.fps, perf: window.__perf, bot: window.__bot.log, weapon: `${g.player.weapon.type}:${g.player.weapon.tier}`, ab: Object.keys(g.player.ab).join(',') };
+    return { state: g.state, time: g.run ? g.run.time : 0, hp: g.player.hp, lvl: g.player.level, kills: g.run?.kills, depth: g.depth, mode: g.mode, enemies: g.enemies.length, fps: g.fps, perf: window.__perf, bot: window.__bot.log, slots: ['blade', 'arms', 'magic', 'power'].map((k) => { const s = g.player.loadout.get(k); return s ? `${s.id}:${s.level}` : '-'; }).join(' ') };
   });
   console.log(JSON.stringify({ ...s, perf: { u: s.perf.update.toFixed(2), r: s.perf.render.toFixed(2) } }));
   if (shots < 6) { await page.screenshot({ path: path.join(outDir, `auto-${shots++}.png`) }); }

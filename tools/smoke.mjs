@@ -66,26 +66,34 @@ try {
       g.spawnEnemy(t, p.x + Math.cos(a) * 6, p.z + Math.sin(a) * 6, { instant: true, elite: i === 3 });
     });
   });
-  for (let i = 0; i < 24; i++) {
-    await page.keyboard.press(i % 5 === 4 ? 'KeyK' : 'KeyJ');
-    if (i % 7 === 3) await page.keyboard.press('KeyQ');
-    await gameTime(0.15);
-  }
+  // lock on, then cut with the blade
+  await page.keyboard.press('Tab');
+  for (let i = 0; i < 16; i++) { await page.keyboard.press('KeyJ'); await gameTime(0.15); }
   await shot('04-combat');
   await page.evaluate(() => { window.__game.gainXp(200); });
   await until(() => window.__game.state === 'levelup');
   await wait(500);
   await shot('05-levelup');
   await page.keyboard.press('Digit1');
+  // a full four-slot build with an evolved blade, then use every slot
   await page.evaluate(() => {
     const g = window.__game;
-    g.player.equip('scythe', 4);
-    g.player.ab.orbitals = 3; g.player.ab.gaze = 2; g.player.ab.entropy = 2;
+    const L = g.player.loadout;
+    L.equip('katana', 5); L.equip('bow', 3); L.equip('thunder', 2); L.equip('berserk', 2);
+    L.evolve(L.readyEvolutions()[0]);
     g.pendingLevels = 0; g.offerQueue = [];
     if (g.state === 'levelup') { g.ui.hideOffers(); g.state = 'play'; }
+    g.player.stats.maxHp = g.player.hp = 99999;
   });
+  await page.keyboard.press('KeyF');
+  await page.keyboard.press('KeyQ');
+  await page.keyboard.down('KeyK');
   for (let i = 0; i < 10; i++) { await page.keyboard.press('KeyJ'); await gameTime(0.15); }
-  await shot('06-legendary-weapon');
+  await page.keyboard.up('KeyK');
+  await page.keyboard.down('ShiftLeft'); await page.keyboard.down('KeyW');
+  await gameTime(0.6);
+  await shot('06-arsenal');
+  await page.keyboard.up('ShiftLeft'); await page.keyboard.up('KeyW');
 
   for (const d of [0, 1, 2, 3]) {
     await page.evaluate((d) => { const g = window.__game; g.enterDimension(d, 'open'); g.player.hp = g.player.stats.maxHp; }, d);

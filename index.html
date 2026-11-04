@@ -55,17 +55,17 @@
         <div class="bar hp"><div id="hp-ghost" class="ghost"></div><div id="hp-fill" class="fill"></div><span id="hp-text"></span></div>
         <div class="bar ult"><div id="ult-fill" class="fill"></div><span id="ult-label">Rend Reality <kbd>R</kbd></span></div>
         <div class="bar dodge"><div id="dodge-fill" class="fill"></div></div>
-        <div id="abilities"></div>
+        <div id="buffs"></div>
       </div>
     </div>
     <div class="hud-tr">
       <div id="depth"></div>
       <div class="stats"><span class="chip" id="chip-shards">◆ <b id="shards">0</b></span><span class="chip">☠ <b id="kills">0</b></span><span class="chip">⧗ <b id="timer">0:00</b></span></div>
+      <div id="wave"><span id="wave-label">Wave 1</span><div class="wave-bar"><i id="wave-fill"></i></div></div>
     </div>
     <div id="objective"></div>
     <div id="bossbar" class="hidden"><div id="boss-name"></div><div class="bar boss"><div id="boss-ghost" class="ghost"></div><div id="boss-fill" class="fill"></div><i class="notch"></i></div></div>
-    <div id="combo"><div class="combo-burst"></div><div id="combo-n">0</div><div id="combo-x">HITS!</div><div id="combo-r"></div></div>
-    <div id="weapon"></div>
+    <div id="slots"></div>
     <div class="xpwrap"><div class="lvl" id="lvl-badge"><span>LV</span><b id="level">1</b></div><div class="bar xp"><div id="xp-fill" class="fill"></div></div></div>
   </div>
   <div id="announce"></div>
@@ -84,11 +84,12 @@
       </div>
       <p id="menu-stats" class="muted"></p>
       <div class="controls">
-        <div><kbd>WASD</kbd> Move</div><div><kbd>LMB</kbd>/<kbd>J</kbd> Strike</div><div><kbd>RMB</kbd>/<kbd>K</kbd> Heavy</div>
-        <div><kbd>Space</kbd> Dodge</div><div><kbd>Q</kbd> Counter</div><div><kbd>R</kbd> Rend Reality</div>
-        <div><kbd>E</kbd> Open container</div><div><kbd>Mouse</kbd> Camera</div><div><kbd>Esc</kbd> Pause</div>
+        <div><kbd>WASD</kbd> Move</div><div><kbd>Shift</kbd> Sprint</div><div><kbd>Space</kbd> Dodge</div>
+        <div><kbd>LMB</kbd> Blade</div><div><kbd>RMB</kbd> Arms (hold)</div><div><kbd>Q</kbd> Arcana</div>
+        <div><kbd>F</kbd> Power</div><div><kbd>R</kbd> Rend Reality</div><div><kbd>E</kbd> Open container</div>
+        <div><kbd>Tab</kbd>/<kbd>MMB</kbd> Lock on</div><div><kbd>Wheel</kbd>/flick Switch target</div><div><kbd>Esc</kbd> Pause</div>
       </div>
-      <p class="muted small">Gamepad supported. Strikes lunge to the nearest foe in your stick direction — chain hits to build your combo.</p>
+      <p class="muted small">Gamepad supported. Four slots, four weapons: level them up, and pair the marked combinations to evolve them.</p>
     </div>
   </div>
 
@@ -136,6 +137,8 @@
       <label>Volume <input id="set-volume" type="range" min="0" max="1" step="0.05" /></label>
       <label>Mouse sensitivity <input id="set-sens" type="range" min="0.3" max="2.5" step="0.05" /></label>
       <label>Screen shake <input id="set-shake" type="range" min="0" max="1.5" step="0.05" /></label>
+      <label>Lock-on camera assist <input id="set-lock" type="range" min="0.2" max="2" step="0.05" /></label>
+      <label>Lock-on flick switching <input id="set-flick" type="range" min="0.3" max="2.5" step="0.05" /></label>
       <button id="settings-close" class="btn">Done</button>
     </div>
   </div>

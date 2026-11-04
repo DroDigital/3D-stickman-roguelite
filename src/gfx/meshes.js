@@ -190,3 +190,37 @@ export function terrainMesh(n, size, heightFn, colorFn, smooth = false) {
   }
   return { data, heights: H, n, size, step };
 }
+
+/**
+ * Foliage tuft meshes in unit space: y runs 0..1 up the blade, col.r carries that 0..1 parameter so the shader
+ * can taper colour and bend only the upper part. Kinds: grass, kelp, crystal, cilia.
+ */
+export function foliageMesh(kind) {
+  const out = [];
+  const v = (x, y, z, t) => out.push(x, y, z, 0, 1, 0, t, 0, 0);
+  const blade = (yaw, w, segs, lean, wave = 0, tipW = 0) => {
+    const c = Math.cos(yaw), s = Math.sin(yaw);
+    const P = (t, side) => {
+      const ww = (w * (1 - t) + tipW * t) * side;
+      const off = lean * t * t + Math.sin(t * 6) * wave * t;
+      return [ww * c + off * s, t, -ww * s + off * c];
+    };
+    for (let i = 0; i < segs; i++) {
+      const t0 = i / segs, t1 = (i + 1) / segs;
+      const a = P(t0, -1), b = P(t0, 1), d = P(t1, -1), e = P(t1, 1);
+      v(...a, t0); v(...b, t0); v(...e, t1);
+      if (i < segs - 1 || tipW > 0) { v(...a, t0); v(...e, t1); v(...d, t1); }
+    }
+  };
+  if (kind === 'kelp') {
+    blade(0.3, 0.12, 6, 0.15, 0.06, 0.03);
+    blade(2.2, 0.1, 5, -0.2, 0.05, 0.02);
+  } else if (kind === 'crystal') {
+    for (let i = 0; i < 3; i++) { blade(i * 2.1, 0.09, 2, 0.12 * (i - 1), 0, 0); blade(i * 2.1 + 1.57, 0.09, 2, 0.12 * (i - 1), 0, 0); }
+  } else if (kind === 'cilia') {
+    for (let i = 0; i < 4; i++) blade(i * 1.6, 0.045, 4, 0.35 * Math.sin(i * 2), 0.02, 0.02);
+  } else {
+    for (let i = 0; i < 4; i++) blade(i * 1.57 + 0.3, 0.055, 3, 0.28 * (i % 2 ? 1 : -0.7));
+  }
+  return new Float32Array(out);
+}

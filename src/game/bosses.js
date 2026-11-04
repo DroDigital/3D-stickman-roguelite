@@ -55,7 +55,7 @@ const shepherd = {
       }
       e.next = 1.4;
     } else if (pick === 1) {
-      // lantern slam: counterable
+      // lantern slam
       e.windup(1.0, true);
       e.anim.play(CLIPS.slam, (CLIPS.slam.hitT * CLIPS.slam.dur) / 1.0);
       e.slamAt = [e.x + fx * 5, e.z + fz * 5];
@@ -431,7 +431,7 @@ const oculus = {
       }
       e.next = 1.4;
     } else {
-      // counterable gaze: dive at the player
+      // gaze: dive at the player
       e.windup(1.0, true);
       e.dive = true;
       e.next = 1.2;

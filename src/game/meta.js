@@ -19,8 +19,8 @@ export const SKILLS = [
   { id: 'speed1', name: 'Quickened Sinew', branch: 'blade', max: 4, cost: [40, 70, 110, 160], pos: [1.7, -0.8], req: ['might1'], desc: (r) => `+${r * 4}% attack speed`, apply: (s, r) => { s.atkSpeed += r * 0.04; } },
   { id: 'crit1', name: 'Vivisectionist', branch: 'blade', max: 4, cost: [45, 80, 120, 170], pos: [1.7, 0.8], req: ['might1'], desc: (r) => `+${r * 3}% critical chance`, apply: (s, r) => { s.critChance += r * 0.03; } },
   { id: 'brut1', name: 'Rending Edge', branch: 'blade', max: 3, cost: [90, 150, 230], pos: [2.5, 0.9], req: ['crit1'], desc: (r) => `+${r * 20}% critical damage`, apply: (s, r) => { s.critMul += r * 0.2; } },
-  { id: 'arsenal', name: 'Reliquary Arsenal', branch: 'blade', max: 1, cost: [250], pos: [2.5, -0.9], req: ['speed1'], desc: () => 'Begin each run with a random Uncommon weapon', apply: (s, r) => { s.startWeapon = r; } },
-  { id: 'combo1', name: 'Crescendo', branch: 'blade', max: 3, cost: [100, 170, 260], pos: [3.3, 0], req: ['brut1', 'arsenal'], any: true, desc: (r) => `+${(r * 0.4).toFixed(1)}% damage per combo hit`, apply: (s, r) => { s.comboDmg += r * 0.004; } },
+  { id: 'arsenal', name: 'Reliquary Arsenal', branch: 'blade', max: 1, cost: [250], pos: [2.5, -0.9], req: ['speed1'], desc: () => 'Begin each run with a random Arms item already equipped', apply: (s, r) => { s.startArms = r; } },
+  { id: 'combo1', name: 'Arcane Focus', branch: 'blade', max: 3, cost: [100, 170, 260], pos: [3.3, 0], req: ['brut1', 'arsenal'], any: true, desc: (r) => `-${r * 5}% Arcana and Power cooldowns`, apply: (s, r) => { s.cdMul *= 1 - r * 0.05; } },
 
   // Mind — south
   { id: 'xp1', name: 'Whispering Skull', branch: 'mind', max: 5, cost: [20, 35, 55, 80, 110], pos: [0, 1], req: ['core'], desc: (r) => `+${r * 6}% experience`, apply: (s, r) => { s.xpMul += r * 0.06; } },
@@ -35,8 +35,8 @@ export const SKILLS = [
   { id: 'dodge1', name: 'Slipstream', branch: 'rift', max: 3, cost: [50, 90, 140], pos: [-1.7, -0.8], req: ['move1'], desc: (r) => `-${r * 8}% dodge cooldown`, apply: (s, r) => { s.dodgeCd *= 1 - r * 0.08; } },
   { id: 'shards1', name: 'Tithe of the Deep', branch: 'rift', max: 4, cost: [40, 70, 110, 160], pos: [-1.7, 0.8], req: ['move1'], desc: (r) => `+${r * 10}% shards, start with ${r * 15}`, apply: (s, r) => { s.shardMul += r * 0.1; s.startShards = (s.startShards || 0) + r * 15; } },
   { id: 'chest1', name: 'Lockbreaker', branch: 'rift', max: 3, cost: [70, 120, 190], pos: [-2.5, 0.9], req: ['shards1'], desc: (r) => `Loot containers cost ${r * 8}% less`, apply: (s, r) => { s.chestDiscount += r * 0.08; } },
-  { id: 'counter1', name: 'Riposte Sense', branch: 'rift', max: 3, cost: [60, 110, 170], pos: [-2.5, -0.9], req: ['dodge1'], desc: (r) => `+${r * 1.5}m counter reach`, apply: (s, r) => { s.counterRange += r * 1.5; } },
-  { id: 'lunge1', name: 'Freeflow Mastery', branch: 'rift', max: 3, cost: [90, 160, 250], pos: [-3.3, 0], req: ['counter1', 'chest1'], any: true, desc: (r) => `+${r * 2}m strike lunge range`, apply: (s, r) => { s.lungeRange += r * 2; } },
+  { id: 'counter1', name: 'Gale Stride', branch: 'rift', max: 3, cost: [60, 110, 170], pos: [-2.5, -0.9], req: ['dodge1'], desc: (r) => `+${r * 6}% sprint speed`, apply: (s, r) => { s.sprintMul += r * 0.06; } },
+  { id: 'lunge1', name: "Alchemist's Mark", branch: 'rift', max: 1, cost: [300], pos: [-3.3, 0], req: ['counter1', 'chest1'], any: true, desc: () => 'Marked items evolve one level early (Lv 4)', apply: (s, r) => { s.evoDiscount += r; } },
 ];
 
 export const SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s]));
@@ -49,7 +49,7 @@ export function defaultSave() {
     echoes: 0,
     ranks: { core: 1 },
     stats: { runs: 0, bestDepth: 0, kills: 0, bosses: 0, bestTime: 0 },
-    settings: { quality: 432, volume: 0.6, sensitivity: 1, shake: 1, style: DEFAULT_STYLE, styleChosen: false },
+    settings: { quality: 432, volume: 0.6, sensitivity: 1, shake: 1, lockAssist: 1, lockFlick: 1, style: DEFAULT_STYLE, styleChosen: false },
   };
 }
 

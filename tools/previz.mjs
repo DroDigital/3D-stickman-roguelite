@@ -84,7 +84,7 @@ await page.evaluate(() => {
   g.enemies = [];
   const p = g.player;
   p.stats.xpMul = 0; p.stats.maxHp = p.hp = 1e5;
-  p.equip('blade', 2);
+  p.loadout.equip('katana', 3);
   p.placeAt(0, 0); p.yaw = 0;
   g.camDist = 3.4; g.camPitch = 0.06;
   window.__sheet = (view, yaw) => { g.bodyView = view; g.camYaw = yaw; };
@@ -165,7 +165,7 @@ await page.evaluate(() => {
   g.spawner.enabled = false;
   const p = g.player;
   p.stats.xpMul = 0; p.stats.maxHp = p.hp = 1e5;
-  p.equip('blade', 3);
+  p.loadout.equip('katana', 4); p.loadout.equip('thunder', 3);
   p.yaw = 0; g.camYaw = 0.35; g.camPitch = 0.3; g.camDist = 7.5;
   g.enemies = [];
   const spots = [[-1.6, 3.2, 'husk'], [1.4, 3.6, 'husk'], [0.2, 5.5, 'brute'], [-3.2, 5, 'hound'], [3.4, 4.8, 'crawler'], [2.2, 6.5, 'husk']];
@@ -174,19 +174,17 @@ await page.evaluate(() => {
 await drive(12);
 const clip = [];
 for (let k = 0; k < 6; k++) {
-  await page.keyboard.press(k === 4 ? 'KeyK' : 'KeyJ');
+  await page.keyboard.press('KeyJ');
   clip.push(...await drive(8, true));
 }
 save('combat.jpg', clip[30].img);
 save('combat-b.jpg', clip[42].img);
 clip.forEach((f, i) => save(`clip-${String(i).padStart(3, '0')}.jpg`, f.img));
-// counter + impact frame
-await page.evaluate(() => {
-  const g = window.__game;
-  const e = g.enemies.find((q) => q.alive && q.type === 'husk') || g.enemies[0];
-  if (e) { e.state = 'chase'; e.windup(0.9, true); }
-});
+// a Thunder Sigil strike + impact frame (Arcana slot, Q)
+await page.evaluate(() => { const g = window.__game; g.lock = g.enemies.find((q) => q.alive && q.type === 'brute') || g.enemies[0]; g.lastImpact = -9; });
 await page.keyboard.press('KeyQ');
+await drive(8);
+await page.evaluate(() => { const g = window.__game; g.lastImpact = -9; g.impact(1); });
 const ctr = await drive(14, true);
 const imp = ctr.find((f) => f.impact > 0) || ctr[6];
 save('impact.jpg', imp.img);
@@ -243,7 +241,7 @@ await page.evaluate(() => {
   g.enterDimension(3, 'arena');
   g.bossSpawnT = 0.01;
   g.player.stats.maxHp = g.player.hp = 1e5;
-  g.player.equip('scythe', 4);
+  g.player.loadout.equip('scythe', 5);
 });
 await drive(60);
 await page.evaluate(() => { const g = window.__game; const b = g.boss; g.player.placeAt(b.x - 2, b.z - 7); g.player.yaw = 0; b.pattern = 0; b.atkCd = 0; });

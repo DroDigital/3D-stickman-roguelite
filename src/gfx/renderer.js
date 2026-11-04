@@ -1,7 +1,7 @@
 // WebGL2 forward renderer: instanced primitive batches, terrain, particles/decals, sky and retro post-processing.
 import * as S from './shaders.js';
 import * as T from './toon.js';
-import { boxMesh, icoSphereMesh, cylinderMesh, coneMesh, octaMesh } from './meshes.js';
+import { boxMesh, icoSphereMesh, cylinderMesh, coneMesh, octaMesh, foliageMesh } from './meshes.js';
 import { mat4Perspective, mat4Ortho, mat4LookAt, mat4Mul, writeSegment, writeTRS } from '../core/math.js';
 
 export const PRIM = { BOX: 0, SPHERE: 1, CYL: 2, CONE: 3, OCTA: 4, ORB: 5, BALL: 6 };
@@ -205,6 +205,13 @@ export class Renderer {
     this.toonSky = new Program(gl, S.FS_TRI_VS, T.TOON_SKY_FS);
     this.ink = new Program(gl, S.FS_TRI_VS, T.INK_FS);
     this.toonPost = new Program(gl, S.FS_TRI_VS, T.TOON_POST_FS);
+    this.grassLit = new Program(gl, S.GRASS_VS, S.LIT_FS);
+    this.grassToon = new Program(gl, S.GRASS_VS, T.TOON_LIT_FS);
+    this.foliage = null;
+    this.push = new Float32Array(16 * 4);
+    this.nPush = 0;
+    this.wind = [0.6, 0.3];
+    this.foliageFade = [0, 0, 30];
     this.style = T.STYLES.retro;
     this.ortho = false;
     this.orthoSize = 11;
@@ -215,8 +222,8 @@ export class Renderer {
     this.dyn = meshes.map((m) => new InstanceBatch(gl, m, 2048, gl.DYNAMIC_DRAW));
     this.stat = meshes.map((m) => new InstanceBatch(gl, m, 512, gl.DYNAMIC_DRAW));
 
-    this.alphaQuads = new QuadBatch(gl, 12000);
-    this.addQuads = new QuadBatch(gl, 16000);
+    this.alphaQuads = new QuadBatch(gl, 18000);
+    this.addQuads = new QuadBatch(gl, 24000);
     this.decals = new QuadBatch(gl, 3000);
 
     this.terrain = null;
@@ -238,6 +245,8 @@ export class Renderer {
     this.post_ = { aberr: 0.2, damage: 0, desat: 0, fade: 1, bloom: 0.9, tint: [1, 1, 1], warp: 0.15, impact: 0, speed: 0 };
     this.time = 0;
     this.env = null;
+    this.focus = [0, 0, 0];
+    this.smokeDensity = 0.8;
     this.resize();
   }
 
@@ -336,6 +345,80 @@ export class Renderer {
     return { vao, buf, count: meshData.length / 9 };
   }
 
+  /** Foliage: pick the tuft mesh for a realm (grass, kelp, crystal, cilia). */
+  setFoliageKind(kind) {
+    const gl = this.gl;
+    if (this.foliage && this.foliage.kind === kind) return;
+    if (this.foliage) { gl.deleteBuffer(this.foliage.meshBuf); gl.deleteBuffer(this.foliage.instBuf); gl.deleteVertexArray(this.foliage.vao); }
+    const mesh = foliageMesh(kind);
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    const meshBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, meshBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, mesh, gl.STATIC_DRAW);
+    for (let i = 0; i < 3; i++) { gl.enableVertexAttribArray(i); gl.vertexAttribPointer(i, 3, gl.FLOAT, false, 36, i * 12); gl.vertexAttribDivisor(i, 0); }
+    const instBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, 4, gl.DYNAMIC_DRAW);
+    for (let i = 0; i < 3; i++) { gl.enableVertexAttribArray(3 + i); gl.vertexAttribPointer(3 + i, 4, gl.FLOAT, false, 48, i * 16); gl.vertexAttribDivisor(3 + i, 1); }
+    for (let i = 6; i < 8; i++) gl.disableVertexAttribArray(i);
+    gl.bindVertexArray(null);
+    this.foliage = { kind, vao, meshBuf, instBuf, vertCount: mesh.length / 9, count: 0, cap: 0 };
+  }
+
+  /** Upload the streamed tuft instances (12 floats each: pos+height, yaw/width/phase/stiffness, rgb+emissive). */
+  setFoliageInstances(data, count) {
+    const f = this.foliage;
+    if (!f) return;
+    const gl = this.gl;
+    gl.bindBuffer(gl.ARRAY_BUFFER, f.instBuf);
+    if (count * 12 > f.cap) { f.cap = Math.max(count * 12, 4096 * 12); gl.bufferData(gl.ARRAY_BUFFER, f.cap * 4, gl.DYNAMIC_DRAW); }
+    if (count) gl.bufferSubData(gl.ARRAY_BUFFER, 0, data, 0, count * 12);
+    f.count = count;
+  }
+
+  _drawFoliage(env_, toon, st, fogOffset, nl, sc) {
+    const f = this.foliage;
+    if (!f || !f.count) return;
+    const gl = this.gl;
+    const p = (toon ? this.grassToon : this.grassLit).use();
+    gl.uniformMatrix4fv(p.u.u_vp, false, this.vp);
+    gl.uniform1f(p.u.u_time, this.time);
+    gl.uniform3fv(p.u.u_sunDir, env_.sunDir);
+    gl.uniform3fv(p.u.u_sunCol, env_.sunCol);
+    gl.uniform3fv(p.u.u_skyCol, env_.skyCol);
+    gl.uniform3fv(p.u.u_gndCol, env_.gndCol);
+    gl.uniform3fv(p.u.u_fogCol, env_.fogCol);
+    gl.uniform3fv(p.u.u_rimCol, env_.rimCol);
+    gl.uniform3fv(p.u.u_camPos, this.camPos);
+    gl.uniform3f(p.u.u_fog, env_.fogNear, env_.fogFar, env_.fogHeight ?? 0.08);
+    gl.uniform1i(p.u.u_nLights, nl);
+    gl.uniform4fv(p.u.u_lightPos, this.lightPos);
+    gl.uniform4fv(p.u.u_lightCol, this.lightCol);
+    gl.uniform4fv(p.u.u_push, this.push);
+    gl.uniform1i(p.u.u_nPush, this.nPush);
+    gl.uniform2fv(p.u.u_wind, this.wind);
+    gl.uniform3fv(p.u.u_fade, this.foliageFade);
+    gl.uniform1f(p.u.u_baseMul, toon ? 0.55 : 0.4);
+    if (toon) {
+      gl.uniform1f(p.u.u_bands, st.bands);
+      gl.uniform1f(p.u.u_tone, st.tone);
+      gl.uniform3fv(p.u.u_shade, st.shade);
+      gl.uniform1f(p.u.u_light, st.light);
+      gl.uniform1f(p.u.u_rim, 0);
+      gl.uniform1f(p.u.u_spec, 0);
+      gl.uniform1f(p.u.u_fogBands, st.fogBands);
+      gl.uniform1f(p.u.u_fogOffset, fogOffset);
+      gl.uniform1f(p.u.u_toneScale, Math.max(1, this.canvas.height / sc.h));
+      gl.uniform1f(p.u.u_ground, 1);
+      // painted, un-inked foliage: colour only, so blades never bury the scene in outlines
+      gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.NONE]);
+    }
+    gl.bindVertexArray(f.vao);
+    gl.drawArraysInstanced(gl.TRIANGLES, 0, f.vertCount, f.count);
+    if (toon) gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+  }
+
   clearStatic() { for (const b of this.stat) b.count = 0; }
 
   /** Adds a static instance, returns {kind, index} handle for later hiding. */
@@ -423,6 +506,19 @@ export class Renderer {
 
   glow(x, y, z, size, r, g, b, a, shape = 0) {
     this.addQuads.push(x, y, z, size, r, g, b, a, 0, 0, 0, shape);
+  }
+
+  /** Screen position (scene pixels) and radius of the combat focus, for thinning smoke around it. */
+  _focusPx(sc) {
+    const f = this.focus, m = this.vp, o = this._fpx || (this._fpx = new Float32Array(3));
+    const x = m[0] * f[0] + m[4] * f[1] + m[8] * f[2] + m[12];
+    const y = m[1] * f[0] + m[5] * f[1] + m[9] * f[2] + m[13];
+    const w = m[3] * f[0] + m[7] * f[1] + m[11] * f[2] + m[15];
+    if (w <= 0.01) { o[0] = -1e4; o[1] = -1e4; o[2] = 1; return o; }
+    o[0] = (x / w * 0.5 + 0.5) * sc.w;
+    o[1] = (y / w * 0.5 + 0.5) * sc.h;
+    o[2] = sc.h * 0.24;
+    return o;
   }
 
   beginFrame() {
@@ -544,6 +640,7 @@ export class Renderer {
     }
     for (const b of this.stat) b.draw();
     for (const b of this.dyn) { b.upload(); b.draw(); }
+    this._drawFoliage(env_, toon, st, fogOffset, nl, sc);
 
     // decals, particles (never written into the G-buffer, so VFX stay un-inked flat shapes)
     if (toon) gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.NONE]);
@@ -555,6 +652,8 @@ export class Renderer {
     gl.uniform3fv(q.u.u_camUp, this.camUp);
     gl.uniform3fv(q.u.u_camPos, this.camPos);
     gl.uniform3f(q.u.u_fog, env_.fogNear, env_.fogFar, 0);
+    gl.uniform3fv(q.u.u_focus, this._focusPx(sc));
+    gl.uniform1f(q.u.u_smoke, this.smokeDensity);
     if (toon) {
       gl.uniform1f(q.u.u_fogOffset, fogOffset);
       gl.uniform3fv(q.u.u_inkCol, st.inkCol);

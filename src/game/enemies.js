@@ -503,7 +503,9 @@ export class Enemy {
     const sc = game.scaling;
     this.maxHp = this.hp = def.hp * sc.hp * (this.elite ? 4.5 : 1);
     this.dmg = def.dmg * sc.dmg * (this.elite ? 1.4 : 1);
-    this.speed = def.speed * (0.9 + Math.random() * 0.2) * (this.elite ? 1.08 : 1) * (opts.fast ? 1.15 : 1);
+    this.speed = def.speed * (0.9 + Math.random() * 0.2) * (this.elite ? 1.08 : 1) * (opts.fast ? 1.15 : 1) * (this.boss ? 1 : sc.speed || 1);
+    this.aggro = this.boss ? 1 : sc.aggro || 1;
+    this.iceT = 0;
     this.radius = def.radius * (this.elite ? 1.3 : 1);
     this.x = x; this.z = z;
     this.y = game.world.height(x, z);
@@ -562,12 +564,14 @@ export class Enemy {
   update(dt, game) {
     const def = this.def;
     this.flash = Math.max(0, this.flash - dt * 6);
-    this.atkCd -= dt;
+    // aggression scales how fast attacks come back around
+    this.atkCd -= dt * (this.aggro || 1);
+    if (this.iceT > 0) this.iceT -= dt;
     if (this.slowT > 0) this.slowT -= dt;
     if (this.burnT > 0) {
       this.burnT -= dt;
       this.hp -= this.burnDps * dt;
-      if (Math.random() < 0.4) game.particles.emit({ x: this.x + (Math.random() - 0.5) * 0.6, y: this.y + 0.5 + Math.random() * this.size, z: this.z + (Math.random() - 0.5) * 0.6, vy: 2, life: 0.5, size: 0.18, size1: 0.02, color: [1, 0.45, 0.1] });
+      if (Math.random() < 0.4) game.particles.emit({ x: this.x + (Math.random() - 0.5) * 0.6, y: this.y + 0.5 + Math.random() * this.size, z: this.z + (Math.random() - 0.5) * 0.6, vy: this.dotCol ? -1 : 2, life: 0.5, size: 0.18, size1: 0.02, color: this.dotCol || [1, 0.45, 0.1], additive: !this.dotCol });
       if (this.hp <= 0) { game.killEnemy(this, { dirX: 0, dirZ: 0, dmg: 1, source: 'burn' }); return; }
     }
     this.stateT -= dt;
@@ -633,13 +637,14 @@ export class Enemy {
     }
     if (this.anim) this.anim.hitReact(Math.min(1.5, info.dmg / 20 + 0.4), Math.random() - 0.5);
     if (this.hp <= 0) return true;
-    // freeflow: light hits interrupt fodder, heavy hits interrupt elites/brutes; bosses only stagger on counters
-    if (this.state === 'windup' || this.state === 'chase') {
-      if (this.boss) {
-        if (info.counter) this.stagger(0.9);
-      } else if (!poise || info.heavy || info.counter) {
+    // light hits only flinch fodder that isn't mid-attack; heavy hits break fodder windups and stagger brutes.
+    // Elites keep their poise against everything but heavy hits; bosses never stagger from damage.
+    if (!this.boss && (this.state === 'windup' || this.state === 'chase')) {
+      if (info.heavy && (!poise || !this.elite)) {
         if (this.state === 'windup') game.cancelHazardsOf(this);
-        this.stagger(info.counter ? 1.1 : info.heavy ? 0.7 : 0.32);
+        this.stagger(poise ? 0.5 : 0.6);
+      } else if (!poise && this.state === 'chase' && info.source === 'melee') {
+        this.stagger(0.2);
       }
     }
     return false;

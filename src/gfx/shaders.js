@@ -37,6 +37,61 @@ void main(){
   gl_Position = cp;
 }`;
 
+// Foliage: one instance per tuft. Blades sway in the wind and bend away from bodies passing through them
+// (u_push: xz position, radius, strength; negative strength pulls inward). Recovery comes from the caller fading
+// trail and blast entries, so trampled grass springs back over a second or so.
+export const GRASS_VS = `#version 300 es
+layout(location=0) in vec3 a_pos;
+layout(location=1) in vec3 a_nrm;
+layout(location=2) in vec3 a_col;
+layout(location=3) in vec4 a_i0;
+layout(location=4) in vec4 a_i1;
+layout(location=5) in vec4 a_i2;
+uniform mat4 u_vp;
+uniform float u_time;
+uniform vec4 u_push[16];
+uniform int u_nPush;
+uniform vec2 u_wind;
+uniform vec3 u_fade;
+uniform float u_baseMul;
+out vec3 v_wpos;
+out vec3 v_nrm;
+out vec3 v_col;
+out float v_emis;
+void main(){
+  float t = a_col.x;
+  float h = a_i0.w;
+  float cy = cos(a_i1.x), sy = sin(a_i1.x);
+  vec3 lp = vec3(a_pos.x * a_i1.y, a_pos.y * h, a_pos.z * h);
+  vec3 p = vec3(lp.x * cy + lp.z * sy, lp.y, -lp.x * sy + lp.z * cy);
+  vec2 root = a_i0.xz;
+  float w = sin(u_time * 1.6 + a_i1.z + root.x * 0.13 + root.y * 0.09) * 0.6 + sin(u_time * 3.3 + a_i1.z * 2.0) * 0.25;
+  vec2 bend = u_wind * (w + 0.5) * 0.22;
+  for (int i = 0; i < 16; i++) {
+    if (i >= u_nPush) break;
+    vec4 q = u_push[i];
+    vec2 d = root - q.xy;
+    float l = length(d);
+    float k = clamp(1.0 - l / q.z, 0.0, 1.0);
+    bend += (d / (l + 0.05)) * k * k * q.w * 1.5;
+  }
+  bend /= a_i1.w;
+  float bl = length(bend);
+  if (bl > 1.25) bend *= 1.25 / bl;
+  float tt = t * t;
+  p.xz += bend * h * tt;
+  p.y *= 1.0 - min(0.75, dot(bend, bend) * 0.45 * tt);
+  // shrink toward the root near the streaming edge so tufts never pop
+  float fade = clamp((u_fade.z - length(root - u_fade.xy)) / 7.0, 0.0, 1.0);
+  p *= fade;
+  vec3 wp = vec3(root.x, a_i0.y, root.y) + p;
+  v_wpos = wp;
+  v_nrm = normalize(vec3(bend.x * 0.6, 1.0, bend.y * 0.6));
+  v_col = mix(a_i2.rgb * u_baseMul, a_i2.rgb, smoothstep(0.0, 0.85, t));
+  v_emis = a_i2.a * t * t;
+  gl_Position = u_vp * vec4(wp, 1.0);
+}`;
+
 export const LIT_FS = `#version 300 es
 precision highp float;
 in vec3 v_wpos;
@@ -126,13 +181,27 @@ void main(){
 
 export const QUAD_FS = `#version 300 es
 precision highp float;
+precision highp int;
 in vec2 v_uv;
 in vec4 v_col;
 in float v_shape;
 in float v_dist;
 uniform vec3 u_fog;
 uniform int u_flat;
+uniform vec3 u_focus;
+uniform float u_smoke;
 out vec4 o_col;
+float bayer4(vec2 p){
+  ivec2 q = ivec2(mod(floor(p), 4.0));
+  float m[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+  return (m[q.x + q.y * 4] + 0.5) / 16.0;
+}
+// Smoke is a dithered cutout: an ordered 4x4 screen-door instead of a translucent blend, thinned further around
+// the combat focus (the player on screen) so fighters always read through it.
+float smokeCover(float a){
+  float fd = length(gl_FragCoord.xy - u_focus.xy) / max(u_focus.z, 1.0);
+  return a * u_smoke * mix(0.35, 1.0, smoothstep(0.3, 1.0, fd));
+}
 void main(){
   vec2 uv = v_uv;
   float r = length(uv);
@@ -154,6 +223,11 @@ void main(){
   else { a = clamp(1.0 - r, 0.0, 1.0); }
   if (a <= 0.004) discard;
   float fog = smoothstep(u_fog.x, u_fog.y * 1.1, v_dist);
+  if (sh == 5 && u_flat == 0) {
+    if (smokeCover(v_col.a * a * 1.6) * (1.0 - fog) < bayer4(gl_FragCoord.xy)) discard;
+    o_col = vec4(v_col.rgb * (0.75 + 0.25 * a), 1.0);
+    return;
+  }
   o_col = vec4(v_col.rgb, v_col.a * a * (1.0 - fog));
 }`;
 
