@@ -14,6 +14,10 @@ const outDir = path.resolve(process.argv[3] || path.join(root, 'tools', 'previz'
 const lite = style.includes('+');
 fs.mkdirSync(outDir, { recursive: true });
 const port = Number(process.argv[4] || 8500 + Math.floor(Math.random() * 400));
+// optional comma list of scenes (sheet, combat, world, oculus, shepherd) so long captures can be split
+// across fresh browser sessions; default runs everything
+const only = process.argv[5] ? new Set(process.argv[5].split(',')) : null;
+const want = (scene) => !only || only.has(scene);
 
 let chromium;
 try {
@@ -59,6 +63,8 @@ await page.evaluate(() => {
     return frames;
   };
   document.getElementById('menu').classList.add('hidden');
+  g.startRun();
+  g.ui.showHud(false);
 });
 
 const save = (name, dataUrl) => fs.writeFileSync(path.join(outDir, name), Buffer.from(dataUrl.split(',')[1], 'base64'));
@@ -66,6 +72,7 @@ const drive = (n, capture = false) => page.evaluate(([n, c]) => window.__drive(n
 
 // ---- scene 0: model sheet — the hero as stick / expanded skeleton / finished model, plus an enemy lineup
 const hasModels = await page.evaluate(() => !!(window.__game.style && window.__game.style.models));
+if (want('sheet') || want('motion')) {
 await page.evaluate(() => {
   window.__seed(2024);
   const g = window.__game;
@@ -85,7 +92,7 @@ await page.evaluate(() => {
 await drive(24);
 const views = hasModels ? ['stick', 'skeleton', 'model'] : ['stick'];
 const angles = [['front', Math.PI], ['three-quarter', Math.PI * 0.72], ['side', Math.PI * 0.5], ['back', 0]];
-for (const vw of views) {
+for (const vw of want('sheet') ? views : []) {
   for (const [an, yaw] of angles) {
     if (style !== 'requiem' && hasModels && vw !== 'model') continue;
     if (lite && an !== 'three-quarter') continue;
@@ -95,6 +102,7 @@ for (const vw of views) {
   }
 }
 // enemy lineup
+if (want('sheet')) {
 await page.evaluate(() => {
   const g = window.__game, p = g.player;
   g.bodyView = 'model';
@@ -108,19 +116,22 @@ await page.evaluate(() => {
 await drive(30);
 save('lineup.jpg', (await drive(1, true))[0].img);
 await page.evaluate(() => { window.__game.enemies = []; });
+}
 // motion study: run, turn and strike — rendered as stick, skeleton and model from the same simulation
-if (style === 'requiem') {
+if (style === 'requiem' && want('motion')) {
   await page.evaluate(() => {
     const g = window.__game, p = g.player;
     p.placeAt(-3, 0); p.yaw = Math.PI / 2;
     g.camYaw = 0; g.camDist = 5.2; g.camPitch = 0.1;
     let t = 0;
-    g.inputWorldDir = function () { t += 1 / 24; const a = Math.PI / 2 - Math.min(t, 1.2) * 1.8; this._dirOut[0] = t < 1.4 ? Math.sin(a) : 0; this._dirOut[1] = t < 1.4 ? Math.cos(a) : 0; return this._dirOut; };
+    g.inputWorldDir = function () { t += 1 / 24; const a = Math.PI / 2 - Math.min(t, 1.0) * 1.8; this._dirOut[0] = t < 1.15 ? Math.sin(a) : 0; this._dirOut[1] = t < 1.15 ? Math.cos(a) : 0; return this._dirOut; };
     const canvas = document.getElementById('gl');
+    window.__mframe = 0;
     window.__motion = (n) => {
       const out = { stick: [], skeleton: [], model: [] };
-      for (let i = 0; i < n; i++) {
-        if (i === 34 || i === 42 || i === 50) g.input._press('KeyJ');
+      for (let k = 0; k < n; k++) {
+        const i = window.__mframe++;
+        if (i === 30 || i === 36 || i === 42) g.input._press('KeyJ');
         g.bodyView = 'model';
         window.__upd(1 / 24);
         for (const v of ['stick', 'skeleton', 'model']) {
@@ -133,12 +144,18 @@ if (style === 'requiem') {
       return out;
     };
   });
-  const mo = await page.evaluate(() => window.__motion(64));
-  for (const [v, frames] of Object.entries(mo)) frames.forEach((d, i) => save(`motion-${v}-${String(i).padStart(3, '0')}.jpg`, d));
+  // fetch in small chunks so one call never holds many frames of GPU work and images
+  for (let chunk = 0; chunk < 3; chunk++) {
+    const mo = await page.evaluate(() => window.__motion(16));
+    for (const [v, frames] of Object.entries(mo)) frames.forEach((d, i) => save(`motion-${v}-${String(chunk * 16 + i).padStart(3, '0')}.jpg`, d));
+  }
   await page.evaluate(() => { const g = window.__game; delete g.inputWorldDir; g.bodyView = 'model'; });
 }
 
+}
+
 // ---- scene 1: close combat in the Ashen Hollows
+if (want('combat')) {
 await page.evaluate(() => {
   window.__seed(4242);
   const g = window.__game;
@@ -174,6 +191,7 @@ const ctr = await drive(14, true);
 const imp = ctr.find((f) => f.impact > 0) || ctr[6];
 save('impact.jpg', imp.img);
 save('counter.jpg', ctr[Math.min(ctr.length - 1, ctr.indexOf(imp) + 5)].img);
+}
 
 if (lite) {
   console.log(style, errors.length ? 'ERRORS: ' + errors.join(' | ') : 'ok (lite)');
@@ -183,6 +201,7 @@ if (lite) {
 }
 
 // ---- scene 2: exploring the Drowned Abyss (chest, obelisk, gazers)
+if (want('world')) {
 await page.evaluate(() => {
   window.__seed(777);
   const g = window.__game;
@@ -199,8 +218,10 @@ await page.evaluate(() => {
 });
 await drive(30);
 save('world.jpg', (await drive(1, true))[0].img);
+}
 
 // ---- scene 3: Oculus Primordial sweeping its beam (Starless Veil)
+if (want('oculus')) {
 await page.evaluate(() => {
   window.__seed(99);
   const g = window.__game;
@@ -212,8 +233,10 @@ await drive(60);
 await page.evaluate(() => { const b = window.__game.boss; if (b) { b.pattern = 0; b.atkCd = 0; b.state = 'chase'; } });
 await drive(44);
 save('boss-oculus.jpg', (await drive(1, true))[0].img);
+}
 
 // ---- scene 4: the Flayed Shepherd (Flesh Cathedral)
+if (want('shepherd')) {
 await page.evaluate(() => {
   window.__seed(31337);
   const g = window.__game;
@@ -226,6 +249,7 @@ await drive(60);
 await page.evaluate(() => { const g = window.__game; const b = g.boss; g.player.placeAt(b.x - 2, b.z - 7); g.player.yaw = 0; b.pattern = 0; b.atkCd = 0; });
 for (let k = 0; k < 3; k++) { await page.keyboard.press('KeyJ'); await drive(7); }
 save('boss-shepherd.jpg', (await drive(1, true))[0].img);
+}
 
 console.log(style, errors.length ? 'ERRORS: ' + errors.join(' | ') : 'ok');
 await browser.close();
