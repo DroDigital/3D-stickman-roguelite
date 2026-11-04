@@ -122,6 +122,8 @@ The game's look is **Ink Requiem**: 90s OVA colour cel shading with black boilin
 
 Combinations: `requiem+neon`, `sutra+colour`, `requiem+diorama`, `lantern+perspective`.
 
+The HUD and menus are drawn in the same anime style, entirely in CSS, inline SVG and canvas code with system fonts. They include ink-outlined slanted panels, screentone, speed lines and starbursts. The hero portrait changes its face when you are hit or low on health. Damage numbers overshoot into place. Title cards slam in letter by letter, and boss warnings come with hazard tape. Transitions are an ink wipe. The colours follow the active pack, and animation respects `prefers-reduced-motion`.
+
 All hand-drawn packs share the same character tech:
 
 - **Models.** The 16-joint pose drives a 28-joint skeleton: a curved three-segment spine, clavicles, a lagging head, wrists and hand tips with follow-through, thumbs, heels and rolling toes. Each cast's designs are skinned onto it with faces, hair and clothing. Hair, coat tails, sashes and robes run on physics chains. Other creatures get fleshed-out volumes over their rigs.

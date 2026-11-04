@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Abyssal Stride</title>
-  <meta name="description" content="A retro 3D stickman freeflow-combat roguelite in a cosmic horror world." />
+  <meta name="description" content="A hand-drawn anime 3D freeflow-combat roguelite in a cosmic horror world." />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -13,29 +13,69 @@
 
   <!-- HUD -->
   <div id="hud" class="hidden">
+    <div id="vignette"></div>
     <div class="hud-tl">
-      <div class="bar hp"><div id="hp-fill"></div><span id="hp-text"></span></div>
-      <div class="bar ult"><div id="ult-fill"></div><span id="ult-label">Rend Reality <kbd>R</kbd></span></div>
-      <div class="bar dodge"><div id="dodge-fill"></div></div>
-      <div id="abilities"></div>
+      <div id="portrait" aria-hidden="true">
+        <svg viewBox="0 0 100 100">
+          <rect width="100" height="100" class="pt-bg" />
+          <g class="pt-lines"><path d="M50 50 L-20 10 M50 50 L-20 40 M50 50 L-10 95 M50 50 L120 0 M50 50 L125 45 M50 50 L115 110 M50 50 L60 -20 M50 50 L20 -20" /></g>
+          <path class="pt-coat" d="M10 104 L26 80 L50 90 L74 80 L90 104 Z" />
+          <path class="pt-collar" d="M34 82 L50 96 L66 82 L60 78 L50 88 L40 78 Z" />
+          <path class="pv-sutra pt-ink-hair" d="M60 26 Q90 30 86 76 Q80 60 68 52 Z" />
+          <path class="pt-skin" d="M31 42 Q30 70 50 80 Q70 70 69 42 Z" />
+          <g class="pt-eyes">
+            <path class="pt-white" d="M34 53 Q40 47 46 53 Q40 59 34 53 Z" /><path class="pt-white" d="M54 53 Q60 47 66 53 Q60 59 54 53 Z" />
+            <ellipse class="pt-iris" cx="41" cy="53.5" rx="3.2" ry="4.6" /><ellipse class="pt-iris" cx="59" cy="53.5" rx="3.2" ry="4.6" />
+            <circle class="pt-shine" cx="42.2" cy="51.6" r="1.3" /><circle class="pt-shine" cx="60.2" cy="51.6" r="1.3" />
+            <path class="pt-lash" d="M33 52 Q40 45.5 47 51.5 M53 51.5 Q60 45.5 67 52" />
+          </g>
+          <g class="pt-hurt"><path class="pt-lash" d="M34 50 L44 54 L34 58 M66 50 L56 54 L66 58" /></g>
+          <path class="pt-brow" d="M34 45 L45 47.5 M66 45 L55 47.5" />
+          <path class="pt-mouth" d="M46 70 Q50 71.5 54 69.5" />
+          <ellipse class="pt-mouth-open" cx="50" cy="70.5" rx="3.4" ry="2.6" />
+          <path class="pt-scar" d="M60 62 L66 66 M58 65 L63 68.5" />
+          <g class="pv-requiem">
+            <path class="pt-hair" d="M23 54 L17 31 L28 35 L25 15 L38 24 L44 6 L52 21 L62 6 L64 25 L77 15 L74 34 L85 30 L78 55 L71 41 L61 35 L54 45 L48 35 L38 43 L30 40 Z" />
+            <path class="pt-hair-shade" d="M48 35 L54 45 L61 35 L56 33 Z M30 40 L38 43 L36 37 Z" />
+          </g>
+          <g class="pv-sutra">
+            <path class="pt-ink-hair" d="M27 60 Q22 20 50 16 Q78 20 73 60 L69 40 L60 47 L55 33 L46 46 L40 34 L33 44 Z" />
+            <path class="pt-tie" d="M66 24 L74 20 L76 28 L68 30 Z" />
+          </g>
+          <g class="pv-lantern">
+            <circle class="pt-dot" cx="41" cy="55" r="3.6" /><circle class="pt-dot" cx="59" cy="55" r="3.6" />
+            <circle class="pt-shine" cx="42.2" cy="53.8" r="1.1" /><circle class="pt-shine" cx="60.2" cy="53.8" r="1.1" />
+            <path class="pt-hood" d="M22 76 Q12 18 50 10 Q88 18 78 76 L70 66 Q74 36 50 32 Q26 36 30 66 Z" />
+            <path class="pt-hood" d="M47 11 L60 0 L58 16 Z" />
+          </g>
+          <path class="pt-sweat" d="M74 44 Q78 50 76 54 Q72 56 71 52 Q71 49 74 44 Z" />
+        </svg>
+      </div>
+      <div class="hud-bars">
+        <div class="bar hp"><div id="hp-ghost" class="ghost"></div><div id="hp-fill" class="fill"></div><span id="hp-text"></span></div>
+        <div class="bar ult"><div id="ult-fill" class="fill"></div><span id="ult-label">Rend Reality <kbd>R</kbd></span></div>
+        <div class="bar dodge"><div id="dodge-fill" class="fill"></div></div>
+        <div id="abilities"></div>
+      </div>
     </div>
     <div class="hud-tr">
       <div id="depth"></div>
-      <div class="stats"><span>◆ <b id="shards">0</b></span><span>☠ <b id="kills">0</b></span><span>⧗ <b id="timer">0:00</b></span></div>
+      <div class="stats"><span class="chip" id="chip-shards">◆ <b id="shards">0</b></span><span class="chip">☠ <b id="kills">0</b></span><span class="chip">⧗ <b id="timer">0:00</b></span></div>
     </div>
     <div id="objective"></div>
-    <div id="bossbar" class="hidden"><div id="boss-name"></div><div class="bar boss"><div id="boss-fill"></div></div></div>
-    <div id="combo"><div id="combo-n">0</div><div id="combo-x">HITS</div><div id="combo-r"></div></div>
+    <div id="bossbar" class="hidden"><div id="boss-name"></div><div class="bar boss"><div id="boss-ghost" class="ghost"></div><div id="boss-fill" class="fill"></div><i class="notch"></i></div></div>
+    <div id="combo"><div class="combo-burst"></div><div id="combo-n">0</div><div id="combo-x">HITS!</div><div id="combo-r"></div></div>
     <div id="weapon"></div>
-    <div class="xpwrap"><div class="lvl">LV <b id="level">1</b></div><div class="bar xp"><div id="xp-fill"></div></div></div>
+    <div class="xpwrap"><div class="lvl" id="lvl-badge"><span>LV</span><b id="level">1</b></div><div class="bar xp"><div id="xp-fill" class="fill"></div></div></div>
   </div>
   <div id="announce"></div>
   <div id="titlecard"></div>
 
   <!-- Title menu -->
   <div id="menu" class="screen">
+    <div class="menu-fx" aria-hidden="true"></div>
     <div class="menu-inner">
-      <div class="logo"><span>ABYSSAL</span><span>STRIDE</span></div>
+      <div class="logo"><i class="logo-slash"></i><span class="logo-a">ABYSSAL</span><span class="logo-b">STRIDE</span></div>
       <p class="tagline">Descend through the dreams of dead gods. Strike. Counter. Unmake.</p>
       <div class="menu-buttons">
         <button id="btn-start" class="btn big">Begin Descent</button>

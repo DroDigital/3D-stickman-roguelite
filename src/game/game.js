@@ -64,6 +64,7 @@ export class Game {
     ANIM.stepRate = st.onTwos || 0;
     this.audio.setStyle(st.sfx || (st.toon ? 'anime' : 'retro'));
     this.style = st;
+    if (this.ui && this.ui.setPack) this.ui.setPack(st);
     return st;
   }
 
