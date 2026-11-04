@@ -1,5 +1,6 @@
 // Enemy base class + creature roster. Each type defines a rig, procedural animation, AI and attacks.
-import { Topology, drawRig } from './rig.js';
+import { Topology, drawRig, drawFlesh } from './rig.js';
+import { Anatomy, BODIES, castBody, drawBody } from './anatomy.js';
 import { HumanoidAnimator, humanoidTopology, CLIPS, STANCE, J } from './humanoid.js';
 import { Legs } from './legs.js';
 import { PRIM } from '../gfx/renderer.js';
@@ -526,6 +527,9 @@ export class Enemy {
     this.xp = def.xp * (this.elite ? 6 : 1);
     this.lastHit = 0;
     def.init(this, game);
+    // humanoid enemies get a full body built on their skeleton (used by the hand-drawn styles)
+    this.bodyId = def.body || type;
+    if (this.anim && BODIES[this.bodyId]) this.anatomy = new Anatomy(castBody(game.style && game.style.cast, this.bodyId), this.size);
   }
 
   windup(time, counterable) {
@@ -605,6 +609,12 @@ export class Enemy {
     this.y = ground + this.airY - (this.state === 'spawn' ? Math.max(0, this.stateT) * 2.2 * this.size : 0);
     this.yaw = dampAngle(this.yaw, this.wantYaw, this.state === 'windup' ? 4 : 10, dt);
     def.animate(this, dt, game);
+    if (this.anatomy && game.style && game.style.models) {
+      const body = castBody(game.style.cast, this.bodyId);
+      if (this.anatomy.body !== body) this.anatomy = new Anatomy(body, this.size);
+      const cp = game.camPos;
+      if ((this.x - cp[0]) ** 2 + (this.z - cp[2]) ** 2 < 45 * 45) this.anatomy.update(dt, this.pts, (x, z) => game.world.height(x, z));
+    }
   }
 
   /** Returns true when killed. */
@@ -638,7 +648,14 @@ export class Enemy {
   draw(R, game) {
     const def = this.def;
     const flash = this.flash * 0.8;
-    drawRig(R, this.topo, this.pts, this.palette, flash, this.size);
+    if (game.style && game.style.models) {
+      const cp = game.camPos;
+      const far = (this.x - cp[0]) ** 2 + (this.z - cp[2]) ** 2 > 45 * 45;
+      if (this.anatomy) drawBody(R, this.anatomy.body, this.pts, far ? null : this.anatomy, this.size, (x, z) => game.world.height(x, z), { flash, eyeCol: game.dim.env.moonCol, lod: far ? 1 : 0 });
+      else drawFlesh(R, this.topo, this.pts, this.palette, flash, this.size, this.boss ? 1.25 : 1.8);
+    } else {
+      drawRig(R, this.topo, this.pts, this.palette, flash, this.size);
+    }
     if (def.draw) def.draw(this, R, game);
     if (this.elite) {
       const c = game.dim.env.moonCol;

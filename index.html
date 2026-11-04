@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Abyssal Stride</title>
   <meta name="description" content="A retro 3D stickman freeflow-combat roguelite in a cosmic horror world." />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Cormorant+Garamond:ital,wght@0,500;1,500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -77,6 +75,22 @@
           <option value="432">Retro (432p)</option>
           <option value="600">Balanced (600p)</option>
           <option value="0">Native</option>
+        </select>
+      </label>
+      <label>Art style
+        <select id="set-style">
+          <option value="retro">Retro low-poly (current)</option>
+          <optgroup label="Asset packs">
+            <option value="requiem">Pack 1 · Ink Requiem</option>
+            <option value="sutra">Pack 2 · Black Sutra</option>
+            <option value="lantern">Pack 3 · Paper Lantern</option>
+          </optgroup>
+          <optgroup label="Combinations">
+            <option value="requiem+neon">Ink Requiem + neon lighting</option>
+            <option value="sutra+colour">Black Sutra in colour</option>
+            <option value="requiem+diorama">Ink Requiem on the diorama camera</option>
+            <option value="lantern+perspective">Paper Lantern in true 3D</option>
+          </optgroup>
         </select>
       </label>
       <label>Volume <input id="set-volume" type="range" min="0" max="1" step="0.05" /></label>

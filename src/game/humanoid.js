@@ -3,6 +3,16 @@
 import { Topology } from './rig.js';
 import { rotYXZ, lerp, smoothstep, clamp, DEG } from '../core/math.js';
 
+/** Global drawing clock for limited animation. stepRate 0 = full frame rate, 12 = "on twos", 8 = "on threes". */
+export const ANIM = { stepRate: 0, frame: 0, acc: 0 };
+
+export function tickAnimClock(dt) {
+  if (!ANIM.stepRate) { ANIM.frame++; return; }
+  ANIM.acc += dt;
+  const step = 1 / ANIM.stepRate;
+  if (ANIM.acc >= step) { ANIM.acc %= step; ANIM.frame++; }
+}
+
 export const J = { PELVIS: 0, CHEST: 1, NECK: 2, HEAD: 3, LSH: 4, LEL: 5, LHA: 6, RSH: 7, REL: 8, RHA: 9, LHIP: 10, LKN: 11, LFT: 12, RHIP: 13, RKN: 14, RFT: 15 };
 
 const HIP_H = 0.95, SPINE = 0.5, NECK = 0.1, HEAD_R = 0.17, SHW = 0.17, UARM = 0.3, FARM = 0.29, HIPW = 0.1, THIGH = 0.47, SHIN = 0.46, FOOT_H = 0.05;
@@ -252,6 +262,10 @@ export class HumanoidAnimator {
     this.speedSm = 0;
     this.pts = new Float32Array(16 * 3);
     this.wdir = new Float32Array(6);
+    this.local = new Float32Array(16 * 3);
+    this.localW = new Float32Array(6);
+    this.heldSpin = 0;
+    this.drawnFrame = -1;
     this.style = 'normal'; // normal | shamble | float | brute
     this.lookYaw = 0;
   }
@@ -383,9 +397,16 @@ export class HumanoidAnimator {
       P.lfy += cl; P.rfy += cr;
       P.py += Math.min(0, cl, cr) * 0.9;
     }
-    solveHumanoid(P, this.pts, this.size, this.wdir);
-    toWorld(this.pts, 16, ctx.x, ctx.y, ctx.z, ctx.yaw + P.spin);
-    rotDir(this.wdir, 0, ctx.yaw + P.spin);
-    rotDir(this.wdir, 3, ctx.yaw + P.spin);
+    // limited animation: the pose is only re-drawn on the shared drawing clock, the body still moves smoothly
+    if (this.drawnFrame !== ANIM.frame) {
+      this.drawnFrame = ANIM.frame;
+      solveHumanoid(P, this.local, this.size, this.localW);
+      this.heldSpin = P.spin;
+    }
+    this.pts.set(this.local);
+    this.wdir.set(this.localW);
+    toWorld(this.pts, 16, ctx.x, ctx.y, ctx.z, ctx.yaw + this.heldSpin);
+    rotDir(this.wdir, 0, ctx.yaw + this.heldSpin);
+    rotDir(this.wdir, 3, ctx.yaw + this.heldSpin);
   }
 }

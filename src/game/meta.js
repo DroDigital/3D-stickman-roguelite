@@ -46,7 +46,7 @@ export function defaultSave() {
     echoes: 0,
     ranks: { core: 1 },
     stats: { runs: 0, bestDepth: 0, kills: 0, bosses: 0, bestTime: 0 },
-    settings: { quality: 432, volume: 0.6, sensitivity: 1, shake: 1 },
+    settings: { quality: 432, volume: 0.6, sensitivity: 1, shake: 1, style: 'retro' },
   };
 }
 

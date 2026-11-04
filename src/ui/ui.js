@@ -54,7 +54,10 @@ export class UI {
     const q = $('#set-quality'), v = $('#set-volume'), s = $('#set-sens'), sh = $('#set-shake');
     const st = this.meta.data.settings;
     q.value = String(st.quality); v.value = String(st.volume); s.value = String(st.sensitivity); sh.value = String(st.shake);
-    q.onchange = () => { st.quality = Number(q.value); game.R.setQuality(st.quality); this.meta.save(); };
+    q.onchange = () => { st.quality = Number(q.value); if (!game.style || !game.style.toon) game.R.setQuality(st.quality); this.meta.save(); };
+    const sty = $('#set-style');
+    sty.value = game.style ? game.style.id : 'retro';
+    sty.onchange = () => { st.style = sty.value; game.setStyle(st.style); this.meta.save(); };
     v.oninput = () => { st.volume = Number(v.value); this.audio.setVolume(st.volume); this.meta.save(); };
     s.oninput = () => { st.sensitivity = Number(s.value); this.meta.save(); };
     sh.oninput = () => { st.shake = Number(sh.value); this.meta.save(); };
@@ -314,7 +317,7 @@ export class UI {
       if (!project(vp, n.x + n.ox, n.y, n.z, W, H, t)) continue;
       const a = clamp(n.t / 0.4, 0, 1);
       const size = (n.crit ? 26 : 17) * clamp(14 / t[2], 0.55, 1.4) * (1 + (0.9 - n.t) * (n.crit ? 0.6 : 0.2));
-      ctx.font = `${n.crit ? 900 : 700} ${size}px "Cinzel", Georgia, serif`;
+      ctx.font = `${n.crit ? 900 : 700} ${size}px "Palatino Linotype", Palatino, Georgia, serif`;
       ctx.globalAlpha = a;
       ctx.lineWidth = 3;
       ctx.strokeStyle = 'rgba(0,0,0,0.85)';
@@ -334,7 +337,7 @@ export class UI {
       ctx.fillStyle = e.elite ? '#d58bff' : '#c33';
       ctx.fillRect(t[0] - w / 2, t[1], w * clamp(e.hp / e.maxHp, 0, 1), 4);
       if (e.elite) {
-        ctx.font = '600 11px "Cinzel", Georgia, serif';
+        ctx.font = '600 11px "Palatino Linotype", Palatino, Georgia, serif';
         ctx.fillStyle = '#e9c9ff';
         ctx.fillText(`Eldritch ${e.name}`, t[0], t[1] - 10);
       }
@@ -358,7 +361,7 @@ export class UI {
         const cost = W_.chestCost(ch, g.player.stats.chestDiscount);
         const afford = g.player.shards >= cost;
         const label = `[E] Open ${CHEST_TIERS[ch.tier].name} — ${cost} ◆`;
-        ctx.font = '600 15px "Cinzel", Georgia, serif';
+        ctx.font = '600 15px "Palatino Linotype", Palatino, Georgia, serif';
         const tw = ctx.measureText(label).width + 24;
         ctx.fillStyle = 'rgba(8,4,12,0.8)';
         ctx.fillRect(t[0] - tw / 2, t[1] - 15, tw, 30);
@@ -372,22 +375,22 @@ export class UI {
     if (g.state === 'play' && g.player.alive) {
       const list = g.counterableEnemies(g.player.x, g.player.z, g.player.stats.counterRange);
       if (list.length) {
-        ctx.font = '700 18px "Cinzel", Georgia, serif';
+        ctx.font = '700 18px "Palatino Linotype", Palatino, Georgia, serif';
         ctx.fillStyle = `rgba(150,240,255,${0.7 + Math.sin(g.time * 20) * 0.3})`;
         ctx.fillText('COUNTER  [Q]', W / 2, H * 0.68);
       }
       if (g.player.ult >= 1) {
-        ctx.font = '700 15px "Cinzel", Georgia, serif';
+        ctx.font = '700 15px "Palatino Linotype", Palatino, Georgia, serif';
         ctx.fillStyle = `rgba(255,200,255,${0.6 + Math.sin(g.time * 6) * 0.3})`;
         ctx.fillText('REND REALITY READY  [R]', W / 2, H * 0.73);
       }
       if (!g.input.locked && !g.input.usingPad) {
-        ctx.font = '600 13px "Cinzel", Georgia, serif';
+        ctx.font = '600 13px "Palatino Linotype", Palatino, Georgia, serif';
         ctx.fillStyle = 'rgba(220,210,235,0.75)';
         ctx.fillText('Click the screen to enable mouse look', W / 2, H - 34);
       }
       if (g.combo >= 10) {
-        ctx.font = '600 13px "Cinzel", Georgia, serif';
+        ctx.font = '600 13px "Palatino Linotype", Palatino, Georgia, serif';
         ctx.fillStyle = 'rgba(255,220,160,0.8)';
         ctx.fillText('Heavy attack: Takedown', W / 2, H * 0.77);
       }
@@ -432,7 +435,7 @@ export class UI {
       ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.stroke(); ctx.fill();
       ctx.fillStyle = '#100810';
       ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
-      ctx.font = '700 11px "Cinzel", Georgia, serif';
+      ctx.font = '700 11px "Palatino Linotype", Palatino, Georgia, serif';
       ctx.fillStyle = m.color;
       ctx.fillText(`${m.label} ${Math.round(d)}m`, 0, -18);
     }

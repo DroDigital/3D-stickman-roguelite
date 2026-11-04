@@ -1,6 +1,7 @@
 // The player: freeflow combat controller, movement, animation layering, weapon trails and cloth scarf.
 import { HumanoidAnimator, humanoidTopology, CLIPS, J } from './humanoid.js';
 import { drawRig } from './rig.js';
+import { Anatomy, BODIES, castBody, drawBody, drawSkeleton } from './anatomy.js';
 import { makeWeapon, drawWeapon, weaponBasis, MOVES } from './weapons.js';
 import { SHAPE } from '../gfx/particles.js';
 import { clamp, dampAngle } from '../core/math.js';
@@ -27,6 +28,7 @@ export class Player {
     this.topo = humanoidTopology(0.042, 0.16);
     this.anim = new HumanoidAnimator(1);
     this.palette = [{ c: [0.86, 0.84, 0.8], e: 0.06 }];
+    this.anatomy = new Anatomy(BODIES.hero, 1);
     this.state = 'free';
     this.stateT = 0;
     this.comboIdx = 0;
@@ -339,6 +341,11 @@ export class Player {
       x: this.x, y: this.y, z: this.z, yaw: this.yaw, ground: (x, z) => g.world.height(x, z),
     });
     this._updateScarf(dt);
+    if (g.style && g.style.models) {
+      const body = castBody(g.style.cast, 'hero');
+      if (this.anatomy.body !== body) this.anatomy = new Anatomy(body, 1);
+      this.anatomy.update(dt, this.anim.pts, (x, z) => g.world.height(x, z));
+    }
     this._trail(dt);
   }
 
@@ -447,12 +454,19 @@ export class Player {
     const P = this.anim.pts;
     const flash = this.hurtFlash > 0 ? this.hurtFlash * 0.6 : 0;
     const blink = this.invulnT > 0 && this.state === 'free' && Math.floor(g.time * 20) % 2 === 0;
-    if (!blink) drawRig(R, this.topo, P, this.palette, flash, 1);
     // eyes glow with weapon rarity
     const eye = this.weapon.trailColor;
-    const hx = P[J.HEAD * 3], hy = P[J.HEAD * 3 + 1], hz = P[J.HEAD * 3 + 2];
-    const s = Math.sin(this.yaw + this.anim.pose.spin + this.anim.pose.headY), c = Math.cos(this.yaw + this.anim.pose.spin + this.anim.pose.headY);
-    for (const side of [-1, 1]) R.ball(hx + side * 0.06 * c + s * 0.14, hy + 0.02, hz - side * 0.06 * s + c * 0.14, 0.028, eye, 3);
+    const ground = (x, z) => g.world.height(x, z);
+    const view = g.bodyView || 'model';
+    if (g.style && g.style.models && view !== 'stick') {
+      if (!blink && view === 'model') drawBody(R, this.anatomy.body, P, this.anatomy, 1, ground, { flash, eyeCol: eye });
+      if (view === 'skeleton') drawSkeleton(R, P, 1, ground, this.anatomy);
+    } else {
+      if (!blink) drawRig(R, this.topo, P, this.palette, flash, 1);
+      const hx = P[J.HEAD * 3], hy = P[J.HEAD * 3 + 1], hz = P[J.HEAD * 3 + 2];
+      const s = Math.sin(this.yaw + this.anim.pose.spin + this.anim.pose.headY), c = Math.cos(this.yaw + this.anim.pose.spin + this.anim.pose.headY);
+      for (const side of [-1, 1]) R.ball(hx + side * 0.06 * c + s * 0.14, hy + 0.02, hz - side * 0.06 * s + c * 0.14, 0.028, eye, 3);
+    }
     // scarf
     const sc = this.scarf;
     for (let i = 1; i < sc.length; i++) {

@@ -8,8 +8,8 @@
   --teal: #5fffd8;
   --panel: rgba(12, 6, 16, 0.86);
   --edge: rgba(200, 160, 255, 0.22);
-  --title: 'Cinzel', Georgia, 'Times New Roman', serif;
-  --body: 'Cormorant Garamond', Georgia, serif;
+  --title: 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+  --body: Georgia, 'Times New Roman', serif;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--body); user-select: none; }

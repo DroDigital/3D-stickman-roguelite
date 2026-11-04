@@ -215,3 +215,35 @@ test('loot containers, obelisks and the rift are never placed inside indestructi
     }
   }
 });
+
+test('anatomy expands the 16-joint pose into a stable 28-joint skeleton with settling cloth', async () => {
+  const { expandSkeleton, Anatomy, BODIES, SKELETON_BONES } = await import('../src/game/anatomy.js');
+  const rng = new RNG(11);
+  const pts = new Float32Array(48);
+  const names = new Set(SKELETON_BONES.flat());
+  assert.equal(names.size, 28);
+  const an = new Anatomy(BODIES.hero, 1);
+  const ground = () => 0;
+  for (let f = 0; f < 240; f++) {
+    const t = f / 60;
+    const p = makePose({ lean: Math.sin(t * 3) * 0.4, twist: Math.sin(t * 2) * 0.8, lp: rng.range(-0.5, 2.5), rp: rng.range(-0.5, 2.5), le: 0.6, re: 0.6, lfz: Math.sin(t * 9) * 0.3, rfz: -Math.sin(t * 9) * 0.3 });
+    solveHumanoid(p, pts, 1);
+    for (let i = 0; i < 16; i++) { pts[i * 3] += t * 4; }
+    an.update(1 / 60, pts, ground);
+    const sk = expandSkeleton(pts, 1, an);
+    for (const n of names) {
+      if (!sk[n]) continue; // feet joints are added at draw time (they need the ground)
+      for (const c of sk[n]) assert.ok(Number.isFinite(c), n);
+    }
+    // the hand tip sits a hand's length from the wrist whatever the drag
+    const d = Math.hypot(...sk.RTIP.map((c, k) => c - sk.RWRIST[k]));
+    assert.ok(Math.abs(d - 0.11) < 1e-6);
+  }
+  for (const strand of [...an.tails, ...an.hair]) {
+    for (let i = 1; i < strand.n; i++) {
+      const seg = Math.hypot(...strand.p[i].map((c, k) => c - strand.p[i - 1][k]));
+      assert.ok(seg < strand.seg * 1.6, 'cloth stays connected');
+      assert.ok(strand.p[i][1] >= 0, 'cloth stays above the ground');
+    }
+  }
+});
