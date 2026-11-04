@@ -8,6 +8,15 @@ import { CHEST_TIERS } from '../game/world.js';
 const $ = (sel) => document.querySelector(sel);
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const DISPLAY = 'Impact, Haettenschweiler, "Franklin Gothic Heavy", "Arial Narrow Bold", "Arial Black", sans-serif';
+const BODY = '"Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif';
+const POP = { duration: 220, easing: 'cubic-bezier(.2, 1.8, .4, 1)' };
+const reducedMotion = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+/** One-shot "pop" (Web Animations API, so it never fights the CSS animations already on the element). */
+function pop(el, from, base = '') {
+  if (!el || reducedMotion || !el.animate) return;
+  el.animate([{ transform: `${base} ${from}` }, { transform: base || 'none' }], POP);
+}
 
 export class UI {
   constructor(meta, audio) {
@@ -23,7 +32,12 @@ export class UI {
       boss: $('#bossbar'), bossName: $('#boss-name'), bossFill: $('#boss-fill'), weapon: $('#weapon'), abilities: $('#abilities'),
       announce: $('#announce'), titleCard: $('#titlecard'), offers: $('#offers'), pause: $('#pause'), gameover: $('#gameover'),
       menu: $('#menu'), tree: $('#tree'), settings: $('#settings'), dodge: $('#dodge-fill'),
+      hpGhost: $('#hp-ghost'), bossGhost: $('#boss-ghost'), portrait: $('#portrait'), vignette: $('#vignette'),
+      ultBar: $('#ult-fill').parentElement, chipShards: $('#chip-shards'), lvlBadge: $('#lvl-badge'),
     };
+    // animated HUD state: trailing "ghost" damage bars, hurt face timer, last values for pop animations
+    this.fx = { ghost: 1, ghostHold: 0, bossGhost: 1, bossHold: 0, hp: -1, hurtT: 0, combo: 0, shards: -1, level: -1, last: 0, bossId: null };
+    this.pal = { ink: '#140c18', paper: '#f3ead8', accent: '#e8253f', gold: '#ffcf4a', cyan: '#7fe6ff', hi: '#a98bff' };
     this.tmp = [0, 0, 0];
     this.offerState = null;
     this._lastAb = '';
@@ -54,11 +68,25 @@ export class UI {
     const q = $('#set-quality'), v = $('#set-volume'), s = $('#set-sens'), sh = $('#set-shake');
     const st = this.meta.data.settings;
     q.value = String(st.quality); v.value = String(st.volume); s.value = String(st.sensitivity); sh.value = String(st.shake);
-    q.onchange = () => { st.quality = Number(q.value); game.R.setQuality(st.quality); this.meta.save(); };
+    q.onchange = () => { st.quality = Number(q.value); if (!game.style || !game.style.toon) game.R.setQuality(st.quality); this.meta.save(); };
+    const sty = $('#set-style');
+    sty.value = game.style ? game.style.id : 'requiem';
+    sty.onchange = () => { st.style = sty.value; st.styleChosen = true; game.setStyle(st.style); this.meta.save(); };
     v.oninput = () => { st.volume = Number(v.value); this.audio.setVolume(st.volume); this.meta.save(); };
     s.oninput = () => { st.sensitivity = Number(s.value); this.meta.save(); };
     sh.oninput = () => { st.shake = Number(sh.value); this.meta.save(); };
     this.updateMenuStats();
+  }
+
+  /** Re-theme the UI for an art pack (CSS variables keyed off body[data-pack]); the overlay canvas reads them back. */
+  setPack(style) {
+    if (typeof document === 'undefined') return;
+    document.body.dataset.pack = (style && style.cast) || 'requiem';
+    const cs = getComputedStyle(document.body);
+    for (const k of Object.keys(this.pal)) {
+      const v = cs.getPropertyValue(`--${k}`).trim();
+      if (v) this.pal[k] = v;
+    }
   }
 
   toTitle() {
@@ -89,10 +117,17 @@ export class UI {
 
   title(name, sub, tag) {
     const t = this.el.titleCard;
-    t.innerHTML = `<div class="tc-tag">${esc(tag)}</div><div class="tc-name">${esc(name)}</div><div class="tc-sub">${esc(sub)}</div>`;
+    const boss = tag === 'BOSS';
+    // letters slam in one by one, like an anime episode title
+    const letters = [...String(name)].map((ch, i) => (ch === ' ' ? ' ' : `<i style="--i:${i}">${esc(ch)}</i>`)).join('');
+    const tape = boss ? '<div class="tc-tape top"></div><div class="tc-tape bottom"></div>' : '';
+    t.innerHTML = `${tape}<div class="tc-band"><div class="tc-tag">${esc(boss ? 'WARNING · BOSS' : tag)}</div><div class="tc-name">${letters}</div><div class="tc-sub">${esc(sub)}</div></div>`;
+    t.classList.toggle('boss', boss);
     t.classList.remove('show');
     void t.offsetWidth;
     t.classList.add('show');
+    clearTimeout(this._titleTimer);
+    this._titleTimer = setTimeout(() => t.classList.remove('show'), 4400);
   }
 
   announce(text, kind = 'info') {
@@ -235,15 +270,38 @@ export class UI {
   // ------------------------------------------------------------ per-frame HUD
   updateHud(g) {
     if (g.state === 'title' || !g.run) return;
-    const p = g.player, e = this.el;
-    e.hpFill.style.width = `${clamp(p.hp / p.stats.maxHp, 0, 1) * 100}%`;
-    e.hpText.textContent = `${Math.max(0, Math.ceil(p.hp))} / ${Math.round(p.stats.maxHp)}`;
+    const p = g.player, e = this.el, fx = this.fx;
+    const now = performance.now();
+    const dt = Math.min(0.1, (now - (fx.last || now)) / 1000);
+    fx.last = now;
+    const hpFrac = clamp(p.hp / p.stats.maxHp, 0, 1);
+    e.hpFill.style.width = `${hpFrac * 100}%`;
+    e.hpText.textContent = `HP ${Math.max(0, Math.ceil(p.hp))} / ${Math.round(p.stats.maxHp)}`;
+    // the white "ghost" bar holds where the health was, then drains down to it
+    if (fx.hp >= 0 && p.hp < fx.hp - 0.5) {
+      fx.ghostHold = 0.4;
+      fx.hurtT = 0.45;
+      e.portrait.classList.remove('hurt'); void e.portrait.offsetWidth; e.portrait.classList.add('hurt');
+      if (!reducedMotion && e.vignette.animate) e.vignette.animate([{ opacity: 0.9 }, { opacity: 0 }], { duration: 260, easing: 'steps(3)' });
+    }
+    fx.hp = p.hp;
+    fx.ghostHold -= dt;
+    if (hpFrac >= fx.ghost) fx.ghost = hpFrac;
+    else if (fx.ghostHold <= 0) fx.ghost = Math.max(hpFrac, fx.ghost - dt * 0.7);
+    e.hpGhost.style.width = `${fx.ghost * 100}%`;
+    fx.hurtT -= dt;
+    if (fx.hurtT <= 0) e.portrait.classList.remove('hurt');
+    const low = hpFrac < 0.3 && p.alive;
+    e.portrait.classList.toggle('low', low);
+    e.vignette.classList.toggle('low', low);
+    e.portrait.classList.toggle('hype', p.ult >= 1 || g.combo >= 20);
     e.ultFill.style.width = `${p.ult * 100}%`;
     e.ultLabel.classList.toggle('ready', p.ult >= 1);
+    e.ultBar.classList.toggle('ready', p.ult >= 1);
     e.dodge.style.width = `${(1 - clamp(p.dodgeCd / p.stats.dodgeCd, 0, 1)) * 100}%`;
     e.xpFill.style.width = `${(p.xp / p.xpNext) * 100}%`;
-    e.level.textContent = p.level;
-    e.shards.textContent = p.shards;
+    if (p.level !== fx.level) { if (fx.level >= 0) pop(e.lvlBadge, 'scale(1.8) rotate(-30deg)'); fx.level = p.level; e.level.textContent = p.level; }
+    if (p.shards !== fx.shards) { if (fx.shards >= 0 && p.shards > fx.shards) pop(e.chipShards, 'scale(1.35) translateY(-4px)', 'skewX(-12deg)'); fx.shards = p.shards; e.shards.textContent = p.shards; }
     e.timer.textContent = fmtTime(g.run.time);
     e.kills.textContent = g.run.kills;
     e.depth.textContent = `${g.mode === 'arena' ? 'Rift Sanctum' : g.dim.name} · Depth ${g.depth + 1}`;
@@ -257,19 +315,35 @@ export class UI {
     } else if (g.boss) obj = 'Destroy the guardian';
     else if (g.world.exitPortal) obj = g.world.exitPortal.armed ? '<span class="good">Step through the rift to descend deeper</span>' : '<span class="good">Gather the spoils — the rift is stabilising</span>';
     else obj = 'The sanctum trembles...';
-    if (obj !== this._lastObj) { e.objective.innerHTML = obj; this._lastObj = obj; }
+    if (obj !== this._lastObj) {
+      // only pop when the objective itself changes, not on every timer tick
+      const kind = obj.replace(/<[^>]+>|[\d:%/]+/g, '');
+      if (this._lastObj !== undefined && kind !== this._lastObjKind) pop(e.objective, 'scale(1.25)', 'translateX(-50%) skewX(-10deg)');
+      e.objective.innerHTML = obj; this._lastObj = obj; this._lastObjKind = kind;
+    }
     // combo
     if (g.combo >= 3) {
       e.combo.classList.add('on');
-      e.comboN.textContent = `${g.combo}`;
-      e.comboR.textContent = g.comboRank();
+      if (g.combo !== fx.combo) {
+        e.comboN.textContent = `${g.combo}`;
+        pop(e.comboN, `scale(${g.combo > fx.combo ? 1.6 : 0.6}) rotate(${(g.combo % 2 ? -1 : 1) * 8}deg)`);
+        const rank = g.comboRank();
+        if (rank !== e.comboR.textContent) { e.comboR.textContent = rank; pop(e.comboR, 'scale(2.2) rotate(-20deg)'); }
+      }
       e.combo.style.setProperty('--heat', Math.min(1, g.combo / 40));
     } else e.combo.classList.remove('on');
+    fx.combo = g.combo;
     // boss
     if (g.boss && g.boss.alive && g.boss.state !== 'spawn') {
       e.boss.classList.remove('hidden');
       e.bossName.textContent = g.boss.name;
-      e.bossFill.style.width = `${clamp(g.boss.hp / g.boss.maxHp, 0, 1) * 100}%`;
+      const bf = clamp(g.boss.hp / g.boss.maxHp, 0, 1);
+      if (fx.bossId !== g.boss) { fx.bossId = g.boss; fx.bossGhost = bf; }
+      if (bf < fx.bossGhost - 0.001) fx.bossHold = fx.bossHold > 0 ? fx.bossHold : 0.35;
+      fx.bossHold -= dt;
+      if (fx.bossHold <= 0) fx.bossGhost = Math.max(bf, fx.bossGhost - dt * 0.5);
+      e.bossFill.style.width = `${bf * 100}%`;
+      e.bossGhost.style.width = `${fx.bossGhost * 100}%`;
     } else e.boss.classList.add('hidden');
     // weapon + abilities (only re-render on change)
     const wkey = `${p.weapon.type}-${p.weapon.tier}`;
@@ -277,6 +351,8 @@ export class UI {
       this._lastWeapon = wkey;
       const r = RARITY[p.weapon.tier];
       e.weapon.innerHTML = `<span class="w-icon">${p.weapon.def.icon}</span><span><b style="color:${r.hex}">${esc(p.weapon.def.name)}</b><br><small>${r.name}</small></span>`;
+      // replay the slide-in for the new weapon
+      e.weapon.style.animation = 'none'; void e.weapon.offsetWidth; e.weapon.style.animation = '';
     }
     const abKey = JSON.stringify(p.ab);
     if (abKey !== this._lastAb) {
@@ -304,40 +380,53 @@ export class UI {
     ctx.fillStyle = 'rgba(0,0,0,0.004)';
     ctx.fillRect(0, 0, 1, 1);
     this.updateHud(g);
-    if (g.state === 'title') return;
+    this.hudEl.classList.toggle('wiping', !!g.transition);
+    if (g.state !== 'title') this._drawWorldUi(ctx, g, W, H);
+    if (g.transition) this._wipe(ctx, g, W, H);
+  }
+
+  _drawWorldUi(ctx, g, W, H) {
+    const P = this.pal;
     const vp = g.R.vp;
     const t = this.tmp;
-    // damage numbers
+    // held on twos, like the animation: prompts jitter between two drawings
+    const two = Math.floor(g.time * 12) % 2;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    // damage numbers: inked italic numerals that overshoot in; crits get a starburst
     for (const n of g.numbers) {
       if (!project(vp, n.x + n.ox, n.y, n.z, W, H, t)) continue;
-      const a = clamp(n.t / 0.4, 0, 1);
-      const size = (n.crit ? 26 : 17) * clamp(14 / t[2], 0.55, 1.4) * (1 + (0.9 - n.t) * (n.crit ? 0.6 : 0.2));
-      ctx.font = `${n.crit ? 900 : 700} ${size}px "Cinzel", Georgia, serif`;
-      ctx.globalAlpha = a;
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-      ctx.strokeText(n.v, t[0], t[1]);
-      const col = n.crit ? '#ffe680' : `rgb(${n.color.map((v) => Math.round(150 + v * 105)).join(',')})`;
-      ctx.fillStyle = col;
-      ctx.fillText(n.v, t[0], t[1]);
+      const life = 0.9 - n.t;
+      const popS = life < 0.06 ? 0.4 + (life / 0.06) * 1.2 : life < 0.14 ? 1.6 - ((life - 0.06) / 0.08) * 0.6 : 1;
+      const size = (n.crit ? 30 : 19) * clamp(14 / t[2], 0.55, 1.4) * popS;
+      ctx.globalAlpha = clamp(n.t / 0.25, 0, 1);
+      ctx.save();
+      ctx.translate(t[0], t[1]);
+      ctx.rotate(n.crit ? -0.14 : -0.05);
+      if (n.crit) {
+        this._burst(ctx, 0, 0, size * 1.25, size * 0.85, 12, life * 3);
+        ctx.fillStyle = P.accent; ctx.fill();
+        ctx.lineWidth = 3; ctx.strokeStyle = P.ink; ctx.stroke();
+      }
+      const col = n.crit ? P.gold : `rgb(${n.color.map((v) => Math.round(170 + v * 85)).join(',')})`;
+      this._inkText(ctx, n.crit ? `${n.v}!` : `${n.v}`, 0, 0, `italic ${size}px ${DISPLAY}`, col, Math.max(3, size * 0.2), Math.max(2, size * 0.1));
+      ctx.restore();
     }
     ctx.globalAlpha = 1;
-    // elite health bars
+    // enemy health: slanted inked bars, elites get a name tag
     for (const e of g.enemies) {
       if (!e.alive || e.boss || (!e.elite && e.hp >= e.maxHp) || e.state === 'spawn') continue;
       if (!project(vp, e.x, e.y + 2.3 * e.size + (e.hover || 0), e.z, W, H, t) || t[2] > 40) continue;
-      const w = e.elite ? 60 : 34;
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(t[0] - w / 2 - 1, t[1] - 1, w + 2, 6);
-      ctx.fillStyle = e.elite ? '#d58bff' : '#c33';
-      ctx.fillRect(t[0] - w / 2, t[1], w * clamp(e.hp / e.maxHp, 0, 1), 4);
-      if (e.elite) {
-        ctx.font = '600 11px "Cinzel", Georgia, serif';
-        ctx.fillStyle = '#e9c9ff';
-        ctx.fillText(`Eldritch ${e.name}`, t[0], t[1] - 10);
-      }
+      const w = e.elite ? 64 : 36, h = e.elite ? 7 : 5;
+      ctx.save();
+      ctx.translate(t[0] - w / 2, t[1]);
+      ctx.transform(1, 0, -0.4, 1, 0, 0);
+      ctx.fillStyle = P.ink; ctx.fillRect(-2, -2, w + 4, h + 4);
+      ctx.fillStyle = e.elite ? P.hi : P.accent; ctx.fillRect(0, 0, w * clamp(e.hp / e.maxHp, 0, 1), h);
+      ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(0, 0, w * clamp(e.hp / e.maxHp, 0, 1), 2);
+      ctx.restore();
+      if (e.elite) this._inkText(ctx, `ELDRITCH ${e.name.toUpperCase()}`, t[0], t[1] - 11, `italic 12px ${DISPLAY}`, P.hi, 3, 0);
     }
     // markers: portal, obelisks, nearby chests
     const markers = [];
@@ -351,55 +440,136 @@ export class UI {
       if (d < 38) markers.push({ x: ch.x, y: ch.y + 1.6, z: ch.z, label: '', color: ch.tier === 2 ? '#33ffd9' : ch.tier === 1 ? '#8fb6ff' : '#ffcc88', small: true, dist: d });
     }
     for (const m of markers) this._marker(ctx, vp, m, W, H, g);
-    // interaction prompt
+    // interaction prompt: a speech bubble over the container
     if (g.nearChest && g.state === 'play') {
       const ch = g.nearChest;
-      if (project(vp, ch.x, ch.y + 2.1, ch.z, W, H, t)) {
+      if (project(vp, ch.x, ch.y + 2.3, ch.z, W, H, t)) {
         const cost = W_.chestCost(ch, g.player.stats.chestDiscount);
         const afford = g.player.shards >= cost;
-        const label = `[E] Open ${CHEST_TIERS[ch.tier].name} — ${cost} ◆`;
-        ctx.font = '600 15px "Cinzel", Georgia, serif';
-        const tw = ctx.measureText(label).width + 24;
-        ctx.fillStyle = 'rgba(8,4,12,0.8)';
-        ctx.fillRect(t[0] - tw / 2, t[1] - 15, tw, 30);
-        ctx.strokeStyle = afford ? '#ffcc66' : '#a33';
-        ctx.strokeRect(t[0] - tw / 2 + 0.5, t[1] - 14.5, tw - 1, 29);
-        ctx.fillStyle = afford ? '#ffe2a8' : '#ff8a8a';
-        ctx.fillText(label, t[0], t[1]);
+        this._bubble(ctx, t[0], t[1] - 6, `Open ${CHEST_TIERS[ch.tier].name}`, `${cost} ◆`, 'E', afford);
       }
     }
-    // counter prompt
     if (g.state === 'play' && g.player.alive) {
       const list = g.counterableEnemies(g.player.x, g.player.z, g.player.stats.counterRange);
-      if (list.length) {
-        ctx.font = '700 18px "Cinzel", Georgia, serif';
-        ctx.fillStyle = `rgba(150,240,255,${0.7 + Math.sin(g.time * 20) * 0.3})`;
-        ctx.fillText('COUNTER  [Q]', W / 2, H * 0.68);
-      }
-      if (g.player.ult >= 1) {
-        ctx.font = '700 15px "Cinzel", Georgia, serif';
-        ctx.fillStyle = `rgba(255,200,255,${0.6 + Math.sin(g.time * 6) * 0.3})`;
-        ctx.fillText('REND REALITY READY  [R]', W / 2, H * 0.73);
-      }
-      if (!g.input.locked && !g.input.usingPad) {
-        ctx.font = '600 13px "Cinzel", Georgia, serif';
-        ctx.fillStyle = 'rgba(220,210,235,0.75)';
-        ctx.fillText('Click the screen to enable mouse look', W / 2, H - 34);
-      }
-      if (g.combo >= 10) {
-        ctx.font = '600 13px "Cinzel", Georgia, serif';
-        ctx.fillStyle = 'rgba(255,220,160,0.8)';
-        ctx.fillText('Heavy attack: Takedown', W / 2, H * 0.77);
-      }
+      if (list.length) this._banner(ctx, W / 2 + (two ? 3 : -3), H * 0.67 + (two ? -2 : 2), 'COUNTER!', 'Q', P.cyan, 30, -0.06);
+      if (g.player.ult >= 1) this._banner(ctx, W / 2, H * 0.745, 'REND REALITY READY', 'R', two ? P.gold : P.hi, 17, 0.04);
+      if (g.combo >= 10) this._banner(ctx, W / 2, H * 0.805, 'HEAVY ▸ TAKEDOWN', 'RMB', P.gold, 14, -0.04);
+      if (!g.input.locked && !g.input.usingPad) this._banner(ctx, W / 2, H - 52, 'Click the screen to enable mouse look', '', P.paper, 13, 0, true);
     }
   }
 
+  /** Display text with a hard ink outline and offset drop shadow. */
+  _inkText(ctx, text, x, y, font, fill, outline, drop) {
+    ctx.font = font;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = this.pal.ink;
+    ctx.fillStyle = this.pal.ink;
+    if (drop) {
+      ctx.lineWidth = outline;
+      ctx.strokeText(text, x + drop, y + drop);
+      ctx.fillText(text, x + drop, y + drop);
+    }
+    ctx.lineWidth = outline;
+    ctx.strokeText(text, x, y);
+    ctx.fillStyle = fill;
+    ctx.fillText(text, x, y);
+  }
+
+  _burst(ctx, x, y, r1, r2, n, rot) {
+    ctx.beginPath();
+    for (let i = 0; i < n * 2; i++) {
+      const a = rot + (i / (n * 2)) * Math.PI * 2;
+      const r = i % 2 ? r2 : r1;
+      ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+    }
+    ctx.closePath();
+  }
+
+  _keycap(ctx, x, y, key, size) {
+    const P = this.pal;
+    ctx.font = `${size}px ${DISPLAY}`;
+    const w = Math.max(size * 1.3, ctx.measureText(key).width + size * 0.7), h = size * 1.35;
+    ctx.fillStyle = P.ink; ctx.fillRect(x - w / 2 + 2, y - h / 2 + 2, w, h);
+    ctx.fillStyle = P.paper; ctx.fillRect(x - w / 2, y - h / 2, w, h);
+    ctx.lineWidth = 2; ctx.strokeStyle = P.ink; ctx.strokeRect(x - w / 2, y - h / 2, w, h);
+    ctx.fillStyle = P.ink; ctx.fillText(key, x, y + 1);
+    return w;
+  }
+
+  /** Slanted manga banner with optional keycap, used for combat prompts. */
+  _banner(ctx, x, y, text, key, color, size, rot, quiet = false) {
+    const P = this.pal;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.font = quiet ? `600 ${size}px ${BODY}` : `italic ${size}px ${DISPLAY}`;
+    const tw = ctx.measureText(text).width;
+    const kw = key ? size * 1.6 + (key.length - 1) * size * 0.5 : 0;
+    const w = tw + kw + size * 1.6, h = size * 1.7, sk = h * 0.35;
+    const path = () => { ctx.beginPath(); ctx.moveTo(-w / 2 + sk, -h / 2); ctx.lineTo(w / 2 + sk, -h / 2); ctx.lineTo(w / 2 - sk, h / 2); ctx.lineTo(-w / 2 - sk, h / 2); ctx.closePath(); };
+    ctx.translate(4, 4); path(); ctx.fillStyle = P.ink; ctx.globalAlpha = quiet ? 0.6 : 1; ctx.fill(); ctx.translate(-4, -4);
+    path(); ctx.fillStyle = quiet ? 'rgba(20,12,24,0.75)' : color; ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = quiet ? 1.5 : 3; ctx.strokeStyle = quiet ? color : P.ink; ctx.stroke();
+    ctx.fillStyle = quiet ? color : P.ink;
+    ctx.fillText(text, -kw / 2, 1);
+    if (key) this._keycap(ctx, w / 2 - kw / 2 - size * 0.5, 0, key, size * 0.62);
+    ctx.restore();
+  }
+
+  /** Speech bubble with a tail, for interaction prompts. */
+  _bubble(ctx, x, y, text, price, key, ok) {
+    const P = this.pal;
+    ctx.font = `700 14px ${BODY}`;
+    const tw = ctx.measureText(text).width;
+    ctx.font = `16px ${DISPLAY}`;
+    const pw = ctx.measureText(price).width;
+    const w = tw + pw + 64, h = 32, bx = x - w / 2, by = y - h - 12;
+    const path = () => {
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(bx, by, w, h, 14) : ctx.rect(bx, by, w, h);
+      ctx.moveTo(x - 8, by + h - 1); ctx.lineTo(x + 2, y); ctx.lineTo(x + 10, by + h - 1);
+    };
+    ctx.save();
+    ctx.translate(3, 3); path(); ctx.fillStyle = P.ink; ctx.fill(); ctx.translate(-3, -3);
+    path(); ctx.fillStyle = P.paper; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = P.ink; ctx.stroke();
+    // cover the seam between the bubble and its tail
+    ctx.fillStyle = P.paper; ctx.fillRect(x - 7, by + h - 4, 16, 5);
+    this._keycap(ctx, bx + 18, by + h / 2, key, 11);
+    ctx.font = `700 14px ${BODY}`; ctx.fillStyle = P.ink; ctx.textAlign = 'left';
+    ctx.fillText(text, bx + 34, by + h / 2 + 1);
+    ctx.font = `16px ${DISPLAY}`; ctx.fillStyle = ok ? P.accent : '#8a8090';
+    ctx.fillText(price, bx + 42 + tw, by + h / 2 + 1);
+    ctx.textAlign = 'center';
+    ctx.restore();
+  }
+
+  /** Scene transition: a slanted ink wipe with a coloured leading stripe, synced to the renderer's fade. */
+  _wipe(ctx, g, W, H) {
+    const P = this.pal;
+    const tr = g.transition;
+    const c = clamp(1 - g.R.post_.fade, 0, 1);
+    const ease = c * c * (3 - 2 * c);
+    const sk = H * 0.4, span = W + sk * 2 + 60;
+    let x0, x1;
+    if (!tr.done) { x0 = -sk - 60; x1 = -sk + ease * span; } else { x0 = -sk + (1 - ease) * span; x1 = W + sk + 60; }
+    const quad = (a, b) => { ctx.beginPath(); ctx.moveTo(a + sk, 0); ctx.lineTo(b + sk, 0); ctx.lineTo(b, H); ctx.lineTo(a, H); ctx.closePath(); };
+    ctx.save();
+    quad(x0, x1); ctx.fillStyle = P.ink; ctx.fill();
+    // coloured stripes ride the moving edge
+    const edge = tr.done ? x0 : x1, dir = tr.done ? -1 : 1;
+    quad(edge, edge + dir * 26); ctx.fillStyle = P.accent; ctx.fill();
+    quad(edge + dir * 34, edge + dir * 42); ctx.fillStyle = P.paper; ctx.fill();
+    ctx.restore();
+  }
+
   _marker(ctx, vp, m, W, H, g) {
+    const P = this.pal;
     const t = this.tmp;
     const on = project(vp, m.x, m.y, m.z, W, H, t);
     const d = Math.hypot(m.x - g.player.x, m.z - g.player.z);
     let x = t[0], y = t[1];
-    const margin = 40;
+    const margin = 46;
     const off = !on || x < margin || x > W - margin || y < margin || y > H - margin;
     if (m.small && off) return;
     if (off) {
@@ -419,22 +589,30 @@ export class UI {
     }
     ctx.save();
     ctx.translate(x, y);
-    ctx.fillStyle = m.color;
-    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
-    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    const diamond = (r) => { ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(r * 0.8, 0); ctx.lineTo(0, r); ctx.lineTo(-r * 0.8, 0); ctx.closePath(); };
     if (m.small) {
-      ctx.globalAlpha = clamp(1 - m.dist / 38, 0.2, 0.9);
-      ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(6, 0); ctx.lineTo(0, 7); ctx.lineTo(-6, 0); ctx.closePath();
-      ctx.stroke(); ctx.fill();
+      ctx.globalAlpha = clamp(1 - m.dist / 38, 0.25, 1);
+      diamond(8); ctx.fillStyle = m.color; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = P.ink; ctx.stroke();
     } else {
-      const pulse = m.big ? 1 + Math.sin(g.time * 5) * 0.12 : 1;
-      ctx.scale(pulse, pulse);
-      ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.stroke(); ctx.fill();
-      ctx.fillStyle = '#100810';
-      ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
-      ctx.font = '700 11px "Cinzel", Georgia, serif';
-      ctx.fillStyle = m.color;
-      ctx.fillText(`${m.label} ${Math.round(d)}m`, 0, -18);
+      // on twos: the ring steps round rather than spinning smoothly
+      const step = Math.floor(g.time * 8) / 8;
+      if (m.big) {
+        ctx.save();
+        ctx.rotate(step * 1.5);
+        ctx.setLineDash([6, 5]); ctx.lineWidth = 3; ctx.strokeStyle = m.color;
+        ctx.beginPath(); ctx.arc(0, 0, 18 + (Math.floor(g.time * 6) % 2) * 2, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+      ctx.translate(2, 2); diamond(13); ctx.fillStyle = P.ink; ctx.fill(); ctx.translate(-2, -2);
+      diamond(13); ctx.fillStyle = P.paper; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = P.ink; ctx.stroke();
+      diamond(6); ctx.fillStyle = m.color; ctx.fill();
+      this._inkText(ctx, m.label, 0, -26, `italic 14px ${DISPLAY}`, m.color, 4, 2);
+      ctx.font = `700 11px ${BODY}`;
+      const dl = `${Math.round(d)}m`;
+      const dw = ctx.measureText(dl).width + 10;
+      ctx.fillStyle = P.ink; ctx.fillRect(-dw / 2, 17, dw, 15);
+      ctx.fillStyle = P.paper; ctx.fillText(dl, 0, 25);
     }
     ctx.restore();
   }

@@ -26,6 +26,16 @@ export function dampAngle(a, b, lambda, dt) {
 export function len2(x, z) { return Math.sqrt(x * x + z * z); }
 export function len3(x, y, z) { return Math.sqrt(x * x + y * y + z * z); }
 
+export function mat4Ortho(out, halfW, halfH, near, far) {
+  out.fill(0);
+  out[0] = 1 / halfW;
+  out[5] = 1 / halfH;
+  out[10] = -2 / (far - near);
+  out[14] = -(far + near) / (far - near);
+  out[15] = 1;
+  return out;
+}
+
 export function mat4Perspective(out, fovy, aspect, near, far) {
   const f = 1 / Math.tan(fovy / 2);
   const nf = 1 / (near - far);

@@ -2,7 +2,7 @@
 import { Renderer } from './gfx/renderer.js';
 import { Input } from './core/input.js';
 import { audio } from './core/audio.js';
-import { Meta } from './game/meta.js';
+import { Meta, DEFAULT_STYLE } from './game/meta.js';
 import { UI } from './ui/ui.js';
 import { Game } from './game/game.js';
 
@@ -28,6 +28,10 @@ function boot() {
   const input = new Input(canvas);
   const ui = new UI(meta, audio);
   const game = new Game(R, input, audio, ui, meta);
+  // art style: ?style=retro|requiem|sutra|lantern|requiem+neon… overrides the saved choice (handy for previews)
+  // ("+" in a query string decodes to a space, so restore it for combination ids like requiem+neon)
+  const urlStyle = (new URLSearchParams(location.search).get('style') || '').replace(/ /g, '+');
+  game.setStyle(urlStyle || meta.data.settings.style || DEFAULT_STYLE);
   ui.bind(game);
   window.__game = game; // handy for debugging / automated smoke tests
 

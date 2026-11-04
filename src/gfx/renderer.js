@@ -1,7 +1,8 @@
 // WebGL2 forward renderer: instanced primitive batches, terrain, particles/decals, sky and retro post-processing.
 import * as S from './shaders.js';
+import * as T from './toon.js';
 import { boxMesh, icoSphereMesh, cylinderMesh, coneMesh, octaMesh } from './meshes.js';
-import { mat4Perspective, mat4LookAt, mat4Mul, writeSegment, writeTRS } from '../core/math.js';
+import { mat4Perspective, mat4Ortho, mat4LookAt, mat4Mul, writeSegment, writeTRS } from '../core/math.js';
 
 export const PRIM = { BOX: 0, SPHERE: 1, CYL: 2, CONE: 3, OCTA: 4, ORB: 5, BALL: 6 };
 const INST_FLOATS = 20;
@@ -163,8 +164,24 @@ function makeTarget(gl, w, h, depth, linear) {
   return { tex, fb, rb, w, h };
 }
 
+/** Attach a second colour texture (G-buffer: packed normal + depth) to a target's framebuffer. */
+function addGbuffer(gl, t) {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, t.w, t.h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  t.gbuf = tex;
+}
+
 function freeTarget(gl, t) {
   if (!t) return;
+  if (t.gbuf) gl.deleteTexture(t.gbuf);
   gl.deleteTexture(t.tex);
   gl.deleteFramebuffer(t.fb);
   if (t.rb) gl.deleteRenderbuffer(t.rb);
@@ -182,6 +199,15 @@ export class Renderer {
     this.bright = new Program(gl, S.FS_TRI_VS, S.BRIGHT_FS);
     this.blur = new Program(gl, S.FS_TRI_VS, S.BLUR_FS);
     this.post = new Program(gl, S.FS_TRI_VS, S.POST_FS);
+    // cel-shaded anime pipeline (previz styles)
+    this.toonLit = new Program(gl, S.LIT_VS, T.TOON_LIT_FS);
+    this.toonQuad = new Program(gl, S.QUAD_VS, T.TOON_QUAD_FS);
+    this.toonSky = new Program(gl, S.FS_TRI_VS, T.TOON_SKY_FS);
+    this.ink = new Program(gl, S.FS_TRI_VS, T.INK_FS);
+    this.toonPost = new Program(gl, S.FS_TRI_VS, T.TOON_POST_FS);
+    this.style = T.STYLES.retro;
+    this.ortho = false;
+    this.orthoSize = 11;
     this.emptyVao = gl.createVertexArray();
 
     // low vertex counts keep the instanced batches cheap even on integrated GPUs
@@ -209,10 +235,22 @@ export class Renderer {
     this.targetHeight = 432; // internal resolution height (retro)
     this.levels = 28;
     this.snap = true;
-    this.post_ = { aberr: 0.2, damage: 0, desat: 0, fade: 1, bloom: 0.9, tint: [1, 1, 1], warp: 0.15 };
+    this.post_ = { aberr: 0.2, damage: 0, desat: 0, fade: 1, bloom: 0.9, tint: [1, 1, 1], warp: 0.15, impact: 0, speed: 0 };
     this.time = 0;
     this.env = null;
     this.resize();
+  }
+
+  /** Switch art style preset (see gfx/toon.js). Returns the active preset. */
+  setStyle(id) {
+    const st = T.STYLES[id] || T.STYLES.requiem;
+    this.style = st;
+    this.snap = !st.toon;
+    this.levels = st.toon ? 0 : 28;
+    this.ortho = !!st.ortho;
+    this.targetHeight = st.height;
+    this.resize(true);
+    return st;
   }
 
   setQuality(targetHeight) {
@@ -234,7 +272,13 @@ export class Renderer {
     freeTarget(gl, this.scene);
     freeTarget(gl, this.bloomA);
     freeTarget(gl, this.bloomB);
+    freeTarget(gl, this.inked);
+    this.inked = null;
     this.scene = makeTarget(gl, lw, lh, true, false);
+    if (this.style && this.style.toon) {
+      addGbuffer(gl, this.scene);
+      this.inked = makeTarget(gl, lw, lh, false, false);
+    }
     this.bloomA = makeTarget(gl, Math.max(1, lw >> 1), Math.max(1, lh >> 1), false, true);
     this.bloomB = makeTarget(gl, Math.max(1, lw >> 1), Math.max(1, lh >> 1), false, true);
     this.aspect = w / h;
@@ -247,7 +291,12 @@ export class Renderer {
     this.fov = fov;
     this.camPos[0] = px; this.camPos[1] = py; this.camPos[2] = pz;
     mat4LookAt(this.view, px, py, pz, tx, ty, tz);
-    mat4Perspective(this.proj, fov, this.aspect, near, far);
+    if (this.ortho) {
+      const hh = this.orthoSize;
+      mat4Ortho(this.proj, hh * this.aspect, hh, near, far);
+    } else {
+      mat4Perspective(this.proj, fov, this.aspect, near, far);
+    }
     mat4Mul(this.vp, this.proj, this.view);
     const v = this.view;
     this.camRight[0] = v[0]; this.camRight[1] = v[4]; this.camRight[2] = v[8];
@@ -256,12 +305,21 @@ export class Renderer {
   }
 
   // ---------------------------------------------------------------- terrain / static
-  setTerrain(meshData) {
+  /** Terrain meshes: `meshData` is the faceted retro mesh, `smoothData` (optional) the painted mesh the toon styles draw. */
+  setTerrain(meshData, smoothData) {
+    for (const t of [this.terrain, this.terrainSmooth]) this._freeMesh(t);
+    this.terrain = this._uploadMesh(meshData);
+    this.terrainSmooth = smoothData ? this._uploadMesh(smoothData) : null;
+  }
+
+  _freeMesh(t) {
+    if (!t) return;
+    this.gl.deleteBuffer(t.buf);
+    this.gl.deleteVertexArray(t.vao);
+  }
+
+  _uploadMesh(meshData) {
     const gl = this.gl;
-    if (this.terrain) {
-      gl.deleteBuffer(this.terrain.buf);
-      gl.deleteVertexArray(this.terrain.vao);
-    }
     const vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
     const buf = gl.createBuffer();
@@ -275,7 +333,7 @@ export class Renderer {
     gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 36, 24);
     for (let i = 3; i < 8; i++) gl.disableVertexAttribArray(i);
     gl.bindVertexArray(null);
-    this.terrain = { vao, buf, count: meshData.length / 9 };
+    return { vao, buf, count: meshData.length / 9 };
   }
 
   clearStatic() { for (const b of this.stat) b.count = 0; }
@@ -339,6 +397,18 @@ export class Renderer {
     b.data[o + 16] = c[0]; b.data[o + 17] = c[1]; b.data[o + 18] = c[2]; b.data[o + 19] = e;
   }
 
+  /** Primitive centred at (cx,cy,cz) with explicit (already scaled) local X/Y/Z axes — for oriented body volumes. */
+  basis(kind, cx, cy, cz, X, Y, Z, c, e = 0) {
+    const b = this.dyn[kind];
+    const o = b.alloc();
+    const d = b.data;
+    d[o] = X[0]; d[o + 1] = X[1]; d[o + 2] = X[2]; d[o + 3] = 0;
+    d[o + 4] = Y[0]; d[o + 5] = Y[1]; d[o + 6] = Y[2]; d[o + 7] = 0;
+    d[o + 8] = Z[0]; d[o + 9] = Z[1]; d[o + 10] = Z[2]; d[o + 11] = 0;
+    d[o + 12] = cx; d[o + 13] = cy; d[o + 14] = cz; d[o + 15] = 1;
+    d[o + 16] = c[0]; d[o + 17] = c[1]; d[o + 18] = c[2]; d[o + 19] = e;
+  }
+
   ball(x, y, z, r, c, e = 0, smooth = false) {
     this.trs(smooth ? PRIM.ORB : PRIM.SPHERE, x, y, z, 0, 0, 0, r, r, r, c, e);
   }
@@ -390,17 +460,28 @@ export class Renderer {
     this.time += dt;
     const env_ = env;
     const sc = this.scene;
+    const st = this.style;
+    const toon = !!st.toon;
+    // in pseudo-3D (orthographic) mode the camera sits far back, so fog is measured from the focus instead
+    const fogOffset = this.ortho ? this.orthoDist || 0 : 0;
     gl.bindFramebuffer(gl.FRAMEBUFFER, sc.fb);
     gl.viewport(0, 0, sc.w, sc.h);
     gl.disable(gl.BLEND);
     gl.disable(gl.CULL_FACE);
-    gl.clearColor(env_.fogCol[0], env_.fogCol[1], env_.fogCol[2], 1);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    if (toon) {
+      gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+      gl.clearBufferfv(gl.COLOR, 0, [env_.fogCol[0], env_.fogCol[1], env_.fogCol[2], 1]);
+      gl.clearBufferfv(gl.COLOR, 1, [0.5, 0.5, 0.9999, 0]);
+      gl.clear(gl.DEPTH_BUFFER_BIT);
+    } else {
+      gl.clearColor(env_.fogCol[0], env_.fogCol[1], env_.fogCol[2], 1);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    }
 
     // sky
     gl.disable(gl.DEPTH_TEST);
     gl.depthMask(false);
-    const sk = this.sky.use();
+    const sk = (toon ? this.toonSky : this.sky).use();
     const th = Math.tan(this.fov / 2);
     gl.uniform3fv(sk.u.u_fwd, this.camFwd);
     gl.uniform3fv(sk.u.u_right, this.camRight);
@@ -413,6 +494,7 @@ export class Renderer {
     gl.uniform3fv(sk.u.u_moonCol, env_.moonCol);
     gl.uniform1f(sk.u.u_time, this.time);
     gl.uniform1f(sk.u.u_stars, env_.stars ?? 1);
+    if (toon) gl.uniform1f(sk.u.u_skyMode, st.sky);
     gl.bindVertexArray(this.emptyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
@@ -420,7 +502,7 @@ export class Renderer {
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
     gl.depthMask(true);
-    const p = this.lit.use();
+    const p = (toon ? this.toonLit : this.lit).use();
     gl.uniformMatrix4fv(p.u.u_vp, false, this.vp);
     gl.uniform2f(p.u.u_snap, this.snap ? sc.w * 0.5 : 0, this.snap ? sc.h * 0.5 : 0);
     gl.uniform1f(p.u.u_time, this.time);
@@ -432,32 +514,51 @@ export class Renderer {
     gl.uniform3fv(p.u.u_rimCol, env_.rimCol);
     gl.uniform3fv(p.u.u_camPos, this.camPos);
     gl.uniform3f(p.u.u_fog, env_.fogNear, env_.fogFar, env_.fogHeight ?? 0.08);
+    if (toon) {
+      gl.uniform1f(p.u.u_bands, st.bands);
+      gl.uniform1f(p.u.u_tone, st.tone);
+      gl.uniform3fv(p.u.u_shade, st.shade);
+      gl.uniform1f(p.u.u_light, st.light);
+      gl.uniform1f(p.u.u_rim, st.rim);
+      gl.uniform1f(p.u.u_spec, st.spec);
+      gl.uniform1f(p.u.u_fogBands, st.fogBands);
+      gl.uniform1f(p.u.u_fogOffset, fogOffset);
+      gl.uniform1f(p.u.u_toneScale, Math.max(1, this.canvas.height / sc.h));
+    }
     const nl = this._packLights();
     gl.uniform1i(p.u.u_nLights, nl);
     gl.uniform4fv(p.u.u_lightPos, this.lightPos);
     gl.uniform4fv(p.u.u_lightCol, this.lightCol);
 
-    if (this.terrain) {
-      gl.bindVertexArray(this.terrain.vao);
+    const terrain = (toon && this.terrainSmooth) || this.terrain;
+    if (terrain) {
+      if (toon) gl.uniform1f(p.u.u_ground, 1);
+      gl.bindVertexArray(terrain.vao);
       gl.vertexAttrib4f(3, 1, 0, 0, 0);
       gl.vertexAttrib4f(4, 0, 1, 0, 0);
       gl.vertexAttrib4f(5, 0, 0, 1, 0);
       gl.vertexAttrib4f(6, 0, 0, 0, 1);
       gl.vertexAttrib4f(7, 1, 1, 1, 0);
-      gl.drawArrays(gl.TRIANGLES, 0, this.terrain.count);
+      gl.drawArrays(gl.TRIANGLES, 0, terrain.count);
+      if (toon) gl.uniform1f(p.u.u_ground, 0);
     }
     for (const b of this.stat) b.draw();
     for (const b of this.dyn) { b.upload(); b.draw(); }
 
-    // decals, particles
+    // decals, particles (never written into the G-buffer, so VFX stay un-inked flat shapes)
+    if (toon) gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.NONE]);
     gl.depthMask(false);
     gl.enable(gl.BLEND);
-    const q = this.quad.use();
+    const q = (toon ? this.toonQuad : this.quad).use();
     gl.uniformMatrix4fv(q.u.u_vp, false, this.vp);
     gl.uniform3fv(q.u.u_camRight, this.camRight);
     gl.uniform3fv(q.u.u_camUp, this.camUp);
     gl.uniform3fv(q.u.u_camPos, this.camPos);
     gl.uniform3f(q.u.u_fog, env_.fogNear, env_.fogFar, 0);
+    if (toon) {
+      gl.uniform1f(q.u.u_fogOffset, fogOffset);
+      gl.uniform3fv(q.u.u_inkCol, st.inkCol);
+    }
     gl.enable(gl.POLYGON_OFFSET_FILL);
     gl.polygonOffset(-2, -8);
     gl.uniform1i(q.u.u_flat, 1);
@@ -466,22 +567,51 @@ export class Renderer {
     gl.disable(gl.POLYGON_OFFSET_FILL);
     gl.uniform1i(q.u.u_flat, 0);
     this.alphaQuads.draw();
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+    // anime VFX are painted, not light: draw "additive" particles as opaque flat colour in toon styles
+    if (toon) gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    else gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
     this.addQuads.draw();
     gl.depthMask(true);
     gl.disable(gl.BLEND);
     gl.disable(gl.DEPTH_TEST);
+    gl.bindVertexArray(this.emptyVao);
+
+    // ink outlines (toon only): reads colour + G-buffer, writes the inked frame
+    let src = sc;
+    if (toon) {
+      gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+      const ik = this.inked;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, ik.fb);
+      gl.viewport(0, 0, ik.w, ik.h);
+      const ip = this.ink.use();
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, sc.tex);
+      gl.uniform1i(ip.u.u_color, 0);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, sc.gbuf);
+      gl.uniform1i(ip.u.u_gbuf, 1);
+      gl.uniform2f(ip.u.u_res, sc.w, sc.h);
+      gl.uniform1f(ip.u.u_time, this.time);
+      gl.uniform1f(ip.u.u_ink, st.ink);
+      gl.uniform1f(ip.u.u_inkW, st.inkW);
+      gl.uniform1f(ip.u.u_boil, st.boil);
+      gl.uniform1f(ip.u.u_boilFps, st.boilFps);
+      gl.uniform3fv(ip.u.u_inkCol, st.inkCol);
+      gl.uniform1f(ip.u.u_crease, st.crease);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.activeTexture(gl.TEXTURE0);
+      src = ik;
+    }
 
     // bloom
-    gl.bindVertexArray(this.emptyVao);
     const bA = this.bloomA, bB = this.bloomB;
     gl.bindFramebuffer(gl.FRAMEBUFFER, bA.fb);
     gl.viewport(0, 0, bA.w, bA.h);
     const br = this.bright.use();
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, sc.tex);
+    gl.bindTexture(gl.TEXTURE_2D, src.tex);
     gl.uniform1i(br.u.u_tex, 0);
-    gl.uniform1f(br.u.u_threshold, 0.7);
+    gl.uniform1f(br.u.u_threshold, toon ? 0.82 : 0.7);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     const bl = this.blur.use();
     gl.uniform1i(bl.u.u_tex, 0);
@@ -499,24 +629,35 @@ export class Renderer {
     // composite
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-    const po = this.post.use();
     const pp = this.post_;
+    const po = (toon ? this.toonPost : this.post).use();
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, sc.tex);
+    gl.bindTexture(gl.TEXTURE_2D, src.tex);
     gl.uniform1i(po.u.u_scene, 0);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, bA.tex);
     gl.uniform1i(po.u.u_bloom, 1);
     gl.uniform2f(po.u.u_res, sc.w, sc.h);
     gl.uniform1f(po.u.u_time, this.time);
-    gl.uniform1f(po.u.u_aberr, pp.aberr);
     gl.uniform1f(po.u.u_damage, pp.damage);
     gl.uniform1f(po.u.u_desat, pp.desat);
     gl.uniform1f(po.u.u_fade, pp.fade);
-    gl.uniform1f(po.u.u_levels, this.levels);
-    gl.uniform1f(po.u.u_bloomAmt, pp.bloom);
     gl.uniform3fv(po.u.u_tint, pp.tint);
-    gl.uniform1f(po.u.u_warp, pp.warp);
+    if (toon) {
+      gl.uniform1f(po.u.u_bloomAmt, st.bloom);
+      gl.uniform1f(po.u.u_paper, st.paper);
+      gl.uniform1f(po.u.u_mono, st.mono);
+      gl.uniform1f(po.u.u_sat, st.sat);
+      gl.uniform3fv(po.u.u_warm, st.warm);
+      gl.uniform1f(po.u.u_impact, pp.impact);
+      gl.uniform1f(po.u.u_speed, pp.speed);
+      gl.uniform3fv(po.u.u_inkCol, st.inkCol);
+    } else {
+      gl.uniform1f(po.u.u_aberr, pp.aberr);
+      gl.uniform1f(po.u.u_levels, this.levels);
+      gl.uniform1f(po.u.u_bloomAmt, pp.bloom);
+      gl.uniform1f(po.u.u_warp, pp.warp);
+    }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.activeTexture(gl.TEXTURE0);
   }

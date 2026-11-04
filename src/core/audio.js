@@ -7,7 +7,15 @@ export class Audio {
     this.enabled = true;
     this.volume = 0.6;
     this.lastPlay = new Map();
+    this.style = 'retro';
   }
+
+  /**
+   * Sound set: 'retro' (original), 'anime' (sword "shing"s, bell counters — Ink Requiem),
+   * 'taiko' (drums, wooden clacks, breathy flute, chimes — Black Sutra),
+   * 'folk' (woodblocks, paper flutter, music box, kalimba — Paper Lantern).
+   */
+  setStyle(style) { this.style = style; }
 
   init() {
     if (this.ctx) return;
@@ -81,6 +89,9 @@ export class Audio {
 
   play(name, intensity = 1) {
     if (!this.enabled || !this.ctx) return;
+    if (this.style === 'anime' && this._anime(name, intensity)) return;
+    if (this.style === 'taiko' && this._taiko(name, intensity)) return;
+    if (this.style === 'folk' && this._folk(name, intensity)) return;
     const c = this.ctx, t = c.currentTime;
     const k = intensity;
     switch (name) {
@@ -177,6 +188,219 @@ export class Audio {
         break;
       default:
         break;
+    }
+  }
+
+  /** Anime SFX set. Returns false for sounds it doesn't override so the retro version plays. */
+  _anime(name, k) {
+    const t = this.ctx.currentTime;
+    const bell = (t0, f, dur, g) => [1, 1.5, 2.76, 4.07].forEach((m, i) => this._tone(t0, dur / (1 + i * 0.6), f * m, f * m, g / (1 + i), 'sine', 0.002));
+    switch (name) {
+      case 'whoosh':
+        if (!this._throttle(name, 0.04)) return true;
+        this._noise(t, 0.14, 2500, 2.5, 0.16 * k, 'bandpass', 7000);
+        this._tone(t, 0.12, 1800, 4200, 0.03 * k, 'sine');
+        return true;
+      case 'heavyWhoosh':
+        this._noise(t, 0.3, 500, 1.4, 0.24 * k, 'bandpass', 3200);
+        this._tone(t, 0.28, 140, 420, 0.08 * k, 'sawtooth');
+        return true;
+      case 'hit':
+        if (!this._throttle(name, 0.03)) return true;
+        this._noise(t, 0.05, 4500, 0.7, 0.3 * k, 'highpass');
+        this._tone(t, 0.07, 900, 160, 0.16 * k, 'square');
+        this._tone(t, 0.14, 130, 45, 0.45 * k, 'sine');
+        return true;
+      case 'crit':
+        this._noise(t, 0.08, 6000, 0.6, 0.35 * k, 'highpass');
+        this._tone(t, 0.3, 110, 35, 0.6 * k, 'sine');
+        bell(t + 0.01, 1180, 0.6, 0.09 * k);
+        return true;
+      case 'counter':
+        bell(t, 2100, 0.9, 0.14);
+        this._noise(t, 0.25, 900, 1, 0.12, 'bandpass', 8000);
+        this._tone(t, 0.25, 80, 40, 0.4, 'sine');
+        return true;
+      case 'dodge':
+        this._noise(t, 0.16, 1200, 1.5, 0.13, 'bandpass', 4500);
+        return true;
+      case 'pickup':
+        if (!this._throttle(name, 0.035)) return true;
+        this._tone(t, 0.09, 1568, 1568, 0.05, 'sine');
+        this._tone(t + 0.05, 0.12, 2093, 2093, 0.05, 'sine');
+        return true;
+      case 'coin':
+        if (!this._throttle(name, 0.05)) return true;
+        bell(t, 1760, 0.3, 0.06);
+        return true;
+      case 'levelup': {
+        [523, 659, 784, 1047, 1319, 1568].forEach((n, i) => {
+          this._tone(t + i * 0.055, 0.45, n, n, 0.09, 'square');
+          this._tone(t + i * 0.055, 0.6, n * 2, n * 2, 0.04, 'triangle');
+        });
+        bell(t + 0.35, 2093, 1.2, 0.08);
+        return true;
+      }
+      case 'death':
+        if (!this._throttle(name, 0.05)) return true;
+        this._noise(t, 0.3, 1400, 0.8, 0.2, 'lowpass', 200);
+        this._tone(t, 0.25, 520, 90, 0.08, 'triangle');
+        return true;
+      case 'select':
+        bell(t, 1320, 0.4, 0.08);
+        return true;
+      case 'ui':
+        this._tone(t, 0.05, 1760, 1760, 0.04, 'triangle');
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /** Karplus–Strong plucked string (shamisen / kalimba-like). */
+  _pluck(t, freq, dur, gain, bright = 0.5) {
+    const c = this.ctx, sr = c.sampleRate;
+    const n = Math.floor(sr * dur);
+    const buf = c.createBuffer(1, n, sr);
+    const d = buf.getChannelData(0);
+    const N = Math.max(2, Math.round(sr / freq));
+    const ring = new Float32Array(N);
+    for (let i = 0; i < N; i++) ring[i] = Math.random() * 2 - 1;
+    let idx = 0;
+    for (let i = 0; i < n; i++) {
+      const nx = (idx + 1) % N;
+      d[i] = ring[idx];
+      ring[idx] = (ring[idx] * (1 - bright) + (ring[idx] + ring[nx]) * 0.5 * bright) * 0.996;
+      idx = nx;
+    }
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    const g = c.createGain();
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(g).connect(this.master);
+    src.start(t);
+  }
+
+  _drum(t, f0, f1, dur, gain) {
+    this._tone(t, dur, f0, f1, gain, 'sine', 0.002);
+    this._noise(t, dur * 0.4, 380, 0.7, gain * 0.5, 'lowpass', 120);
+  }
+
+  _taiko(name, k) {
+    const t = this.ctx.currentTime;
+    const clack = (t0, g) => this._noise(t0, 0.035, 2600, 9, g, 'bandpass');
+    const chime = (t0, f, g) => [1, 2.76, 5.4].forEach((m, i) => this._tone(t0, 0.9 / (1 + i), f * m, f * m, g / (1 + i * 1.5), 'sine', 0.002));
+    switch (name) {
+      case 'whoosh':
+        if (!this._throttle(name, 0.04)) return true;
+        this._noise(t, 0.16, 2200, 6, 0.2 * k, 'bandpass', 900);
+        return true;
+      case 'heavyWhoosh':
+        this._noise(t, 0.3, 1400, 4, 0.24 * k, 'bandpass', 500);
+        this._tone(t, 0.3, 90, 60, 0.12 * k, 'sine');
+        return true;
+      case 'hit':
+        if (!this._throttle(name, 0.03)) return true;
+        this._drum(t, 150, 62, 0.24, 0.5 * k);
+        clack(t, 0.25 * k);
+        return true;
+      case 'crit':
+        this._drum(t, 115, 40, 0.5, 0.7 * k);
+        this._noise(t, 0.4, 7000, 0.5, 0.12 * k, 'highpass');
+        clack(t, 0.3 * k);
+        return true;
+      case 'counter':
+        this._tone(t, 0.08, 1450, 1300, 0.12, 'square');
+        chime(t + 0.01, 1320, 0.12);
+        this._drum(t, 130, 50, 0.3, 0.45);
+        return true;
+      case 'dodge':
+        this._noise(t, 0.13, 5000, 0.8, 0.12, 'highpass');
+        return true;
+      case 'pickup':
+        if (!this._throttle(name, 0.035)) return true;
+        chime(t, 2637, 0.035);
+        return true;
+      case 'coin':
+        if (!this._throttle(name, 0.05)) return true;
+        chime(t, 1760, 0.05); chime(t + 0.06, 2349, 0.04);
+        return true;
+      case 'levelup':
+        [0, 0.11, 0.2, 0.27].forEach((d, i) => this._drum(t + d, 140 - i * 6, 60, 0.25, 0.4));
+        [293.7, 349.2, 392, 440, 523.3, 587.3].forEach((f, i) => this._pluck(t + 0.3 + i * 0.07, f, 0.9, 0.22, 0.6));
+        return true;
+      case 'death':
+        if (!this._throttle(name, 0.05)) return true;
+        this._drum(t, 90, 40, 0.35, 0.35);
+        this._noise(t, 0.35, 1100, 5, 0.1, 'bandpass', 500);
+        return true;
+      case 'select':
+        this._pluck(t, 440, 0.6, 0.25, 0.6);
+        return true;
+      case 'ui':
+        clack(t, 0.12);
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  _folk(name, k) {
+    const t = this.ctx.currentTime;
+    const wood = (t0, f, g) => { this._tone(t0, 0.07, f, f * 0.94, g, 'sine', 0.001); this._noise(t0, 0.02, f * 3, 4, g * 0.6, 'bandpass'); };
+    const box = (t0, f, g) => { this._tone(t0, 0.5, f, f, g, 'sine', 0.001); this._tone(t0, 0.25, f * 2, f * 2, g * 0.35, 'sine', 0.001); };
+    const penta = [523.3, 587.3, 659.3, 784, 880, 1046.5];
+    switch (name) {
+      case 'whoosh':
+        if (!this._throttle(name, 0.04)) return true;
+        this._noise(t, 0.12, 3000, 1, 0.12 * k, 'bandpass', 1800);
+        return true;
+      case 'heavyWhoosh':
+        this._noise(t, 0.24, 1800, 1, 0.16 * k, 'bandpass', 900);
+        wood(t + 0.05, 260, 0.12 * k);
+        return true;
+      case 'hit':
+        if (!this._throttle(name, 0.03)) return true;
+        wood(t, 760 + Math.random() * 120, 0.32 * k);
+        this._tone(t, 0.1, 140, 80, 0.25 * k, 'sine');
+        return true;
+      case 'crit':
+        wood(t, 620, 0.35 * k);
+        [196, 247, 294].forEach((f) => this._pluck(t, f, 0.7, 0.18 * k, 0.4));
+        return true;
+      case 'counter':
+        wood(t, 900, 0.3);
+        [2093, 2637, 3136].forEach((f, i) => box(t + 0.03 + i * 0.05, f, 0.06));
+        return true;
+      case 'dodge':
+        this._noise(t, 0.15, 2600, 1.2, 0.1, 'bandpass', 1200);
+        return true;
+      case 'pickup':
+        if (!this._throttle(name, 0.035)) return true;
+        box(t, penta[(Math.random() * penta.length) | 0] * 2, 0.04);
+        return true;
+      case 'coin':
+        if (!this._throttle(name, 0.05)) return true;
+        this._pluck(t, 1046.5, 0.5, 0.2, 0.9);
+        return true;
+      case 'levelup':
+        [523.3, 659.3, 784, 1046.5, 1318.5].forEach((f, i) => this._pluck(t + i * 0.09, f, 0.9, 0.24, 0.9));
+        box(t + 0.5, 2093, 0.06);
+        return true;
+      case 'death':
+        if (!this._throttle(name, 0.05)) return true;
+        this._pluck(t, 196, 0.5, 0.18, 0.3);
+        this._noise(t, 0.25, 900, 0.8, 0.12, 'lowpass', 200);
+        return true;
+      case 'select':
+        box(t, 1318.5, 0.08);
+        return true;
+      case 'ui':
+        wood(t, 1100, 0.1);
+        return true;
+      default:
+        return false;
     }
   }
 

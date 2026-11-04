@@ -23,7 +23,13 @@ test('dev server rejects hostile paths without crashing', async () => {
   const port = 9100 + Math.floor(Math.random() * 500);
   const server = spawn(process.execPath, [path.join(root, 'server.js'), String(port)], { stdio: 'ignore' });
   try {
-    await new Promise((r) => setTimeout(r, 400));
+    // wait until the server accepts connections (startup can be slow on a busy machine)
+    for (let i = 0; ; i++) {
+      try { await get(port, '/'); break; } catch (e) {
+        if (i > 100) throw e;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    }
     assert.equal(await get(port, '/%00'), 400);
     assert.equal(await get(port, '/src/%00main.js'), 400);
     assert.equal(await get(port, '/%ZZ'), 400);

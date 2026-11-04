@@ -19,7 +19,7 @@ const shepherd = {
   boss: true,
   name: 'The Hollow Shepherd',
   title: 'Keeper of the Burnt Flock',
-  hp: 3200, dmg: 28, speed: 3.4, radius: 1.6, size: 3.4, xp: 300, shard: 60, poise: true, spawnTime: 2.2,
+  hp: 3200, dmg: 28, speed: 3.4, radius: 1.6, size: 3.4, xp: 300, shard: 60, poise: true, spawnTime: 2.2, body: 'shepherd',
   palette: (dim) => [pal(dim.id === 'flesh' ? [0.55, 0.22, 0.2] : [0.42, 0.36, 0.32], 0.08), pal([0.85, 0.8, 0.7], 0.1)],
   init(e, game) {
     e.topo = humanoidTopology(0.05, 0.13, { headSlot: 1 });

@@ -1,6 +1,6 @@
 # Abyssal Stride
 
-A third-person retro 3D stickman roguelite set in a cosmic-horror / dark-fantasy abyss. Freeflow combat, procedural worlds, tiered loot, bosses and a persistent skill tree. Everything is plain JavaScript and WebGL2. There is no engine, no framework, no build step, no assets and no runtime dependencies.
+A third-person hand-drawn anime 3D roguelite set in a cosmic-horror / dark-fantasy abyss. Freeflow combat, procedural worlds, tiered loot, bosses and a persistent skill tree. Everything is plain JavaScript and WebGL2. There is no engine, no framework, no build step, no assets and no runtime dependencies.
 
 ## Run it
 
@@ -105,17 +105,43 @@ Each dimension has its own lighting, fog, sky (with a nebula and a watching ecli
 - Spring-driven secondary motion covers leaning into acceleration and hit reactions.
 - Keyframed action clips include rolls and flips.
 
-**Retro look**
+**Original retro look** (still selectable as `retro`)
 - The scene renders at a low internal resolution with vertex snapping and is upscaled nearest-neighbour.
 - Post-processing adds ordered dithering with colour quantisation, bloom, chromatic aberration, a reality-warp effect, film grain and a vignette.
+
+## Art style: Ink Requiem
+
+The game's look is **Ink Requiem**: 90s OVA colour cel shading with black boiling ink lines, drawn on twos, with an anime sound set. It was chosen from three asset packs; the others stay available in **Settings → Art style**, or with `?style=` in the URL, for example `http://localhost:8080/?style=sutra`. Each pack bundles a render style, its own cast of character designs, effects, animation timing, a camera and a sound set.
+
+| Pack | Id | Render | Cast | Camera and timing | Sound |
+| --- | --- | --- | --- | --- | --- |
+| Original | `retro` | Smooth lighting, dithered, no outlines | Stick figures | Perspective, full frame rate | Retro synth |
+| **1 · Ink Requiem (default)** | `requiem` | 90s OVA colour cel, black boiling ink | Silver-haired swordsman in an indigo long coat | Perspective, on twos | Anime: shings, bells, sparkles |
+| 2 · Black Sutra | `sutra` | Monochrome manga screentone, red survives | Ponytailed swordswoman, talisman ghouls, oni brute | Perspective, on twos | Taiko: drums, clacks, flute, chimes |
+| 3 · Paper Lantern | `lantern` | Storybook cut-out, thick brush lines, hatching | Button-eyed lantern bearer, rag dolls, paper ghosts | Pseudo-3D orthographic diorama, on threes | Folk: woodblocks, music box, kalimba |
+
+Combinations: `requiem+neon`, `sutra+colour`, `requiem+diorama`, `lantern+perspective`.
+
+The HUD and menus are drawn in the same anime style, entirely in CSS, inline SVG and canvas code with system fonts. They include ink-outlined slanted panels, screentone, speed lines and starbursts. The hero portrait changes its face when you are hit or low on health. Damage numbers overshoot into place. Title cards slam in letter by letter, and boss warnings come with hazard tape. Transitions are an ink wipe. The colours follow the active pack, and animation respects `prefers-reduced-motion`.
+
+All hand-drawn packs share the same character tech:
+
+- **Models.** The 16-joint pose drives a 28-joint skeleton: a curved three-segment spine, clavicles, a lagging head, wrists and hand tips with follow-through, thumbs, heels and rolling toes. Each cast's designs are skinned onto it with faces, hair and clothing. Hair, coat tails, sashes and robes run on physics chains. Other creatures get fleshed-out volumes over their rigs.
+- **Ink pass.** Depth and normal edges from a G-buffer become outlines that re-trace a few times a second ("line boil").
+- **Cel effects and sky.** Effects are flat painted shapes, and the sky is banded with painted clouds.
+- **Impact frames and speed lines.** Two-tone impact frames fire on counters, takedowns and big kills, and speed lines appear during lunges.
+
+`node tools/previz.mjs <id>` replays the same seeded scenes in one pack and saves stills, a model sheet and a combat clip. It needs Playwright.
+
+Everything is generated in code. The project uses no downloaded models, textures, fonts or sounds.
 
 ## Architecture
 
 ```
 src/
   core/   math (column-major mat4, TRS/segment writers), seeded RNG, noise, spatial hash, input (+gamepad), WebAudio synth
-  gfx/    WebGL2 renderer (instanced primitive batches, terrain, quads/decals, sky, bloom, post), meshes, particle pools
-  game/   game loop/orchestrator, player controller, humanoid solver + clips, legged locomotion, rig + ragdolls,
+  gfx/    WebGL2 renderer (instanced primitive batches, terrain, quads/decals, sky, bloom, post), toon/ink shaders + style presets, meshes, particle pools
+  game/   game loop/orchestrator, player controller, humanoid solver + clips, anatomy (expanded skeleton + skinned bodies), legged locomotion, rig + ragdolls,
           enemies, bosses, abilities, spawner, world generation, dimensions, weapons, upgrades table, meta skill tree
   ui/     DOM HUD + 2D overlay (damage numbers, markers, prompts), level-up cards, menus, skill tree
 ```

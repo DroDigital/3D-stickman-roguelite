@@ -10,7 +10,8 @@ import { Player } from './player.js';
 import { Enemy, ENEMY_TYPES } from './enemies.js';
 import { BOSSES } from './bosses.js';
 import { Ragdolls } from './rig.js';
-import { J } from './humanoid.js';
+import { J, ANIM, tickAnimClock } from './humanoid.js';
+import { BODIES, drawBody } from './anatomy.js';
 import { Abilities } from './abilities.js';
 import { Spawner } from './spawner.js';
 import { PLAYER_BASE } from './config.js';
@@ -54,6 +55,25 @@ export class Game {
     this._mouse = [0, 0];
     this.settings = meta.data.settings;
     this._buildTitleWorld();
+  }
+
+  /** Apply an art-style preset (renderer, animation drawing rate, SFX set). */
+  setStyle(id) {
+    const st = this.R.setStyle(id);
+    if (!st.toon) this.R.setQuality(this.settings.quality);
+    ANIM.stepRate = st.onTwos || 0;
+    this.audio.setStyle(st.sfx || (st.toon ? 'anime' : 'retro'));
+    this.style = st;
+    if (this.ui && this.ui.setPack) this.ui.setPack(st);
+    return st;
+  }
+
+  /** Anime impact frame: a couple of two-tone frames on decisive hits (throttled so it never strobes). */
+  impact(strength = 1) {
+    if (!this.style || !this.style.toon) return;
+    if (this.time - (this.lastImpact || -9) < 0.45) return;
+    this.lastImpact = this.time;
+    this.impactT = 0.07 * strength;
   }
 
   // ================================================================== lifecycle
@@ -263,7 +283,7 @@ export class Game {
       const crit = move.name === 'finisher' || move.counter || Math.random() < st.critChance;
       let dmg = baseDmg * comboMul * (crit ? st.critMul : 1) * (move.counter ? 1.3 : 1) * (0.92 + Math.random() * 0.16);
       if (e.state === 'stagger') dmg *= 1.15;
-      const info = { dmg, crit, dirX: dx / d, dirZ: dz / d, kb: move.kb * st.knockback * (1.2 - (hitIndex ? 0.4 : 0)), launch: move.launch, heavy: !!move.heavy || (move.dmg >= 1.8), counter: !!move.counter, source: 'melee', color: w.trailColor };
+      const info = { dmg, crit, dirX: dx / d, dirZ: dz / d, kb: move.kb * st.knockback * (1.2 - (hitIndex ? 0.4 : 0)), launch: move.launch, heavy: !!move.heavy || (move.dmg >= 1.8), counter: !!move.counter, source: 'melee', color: w.trailColor, impact: move.name === 'finisher' || !!move.ultimate };
       this.damageEnemy(e, info);
       hits++;
     };
@@ -317,11 +337,13 @@ export class Game {
       this.abilities.onHit(e, info);
     }
     if (info.burn) { e.burnT = 2.5; e.burnDps = info.burn; }
+    if (info.impact || (info.counter && info.source === 'melee')) this.impact();
     if (killed) this.killEnemy(e, info);
   }
 
   killEnemy(e, info) {
     if (!e.alive) return;
+    if (e.boss || e.elite) this.impact(e.boss ? 2 : 1);
     // a lethal interruption must be at least as effective as a stagger: drop the pending windup attack
     if (e.state === 'windup') {
       this.cancelHazardsOf(e);
@@ -338,7 +360,7 @@ export class Game {
       impulsePoint: isHuman ? J.CHEST : 0,
       dismember: overkill && !e.boss ? (info.crit && Math.random() < 0.5 ? 2 : 1) : 0,
       scaleR: e.size, life: e.boss ? 9 : 5 + Math.random() * 1.5, ash: this.dim.ash, blood: this.dim.blood,
-      radius: e.boss ? 0.3 : 0.06,
+      radius: e.boss ? 0.3 : 0.06, body: e.anatomy ? e.anatomy.body : null,
     });
     const y = e.y + 1 * e.size;
     this.particles.burst(e.x, y, e.z, overkill ? 34 : 18, { speed: overkill ? 9 : 6, color: this.dim.blood, shape: SHAPE.CHUNK, size: 0.1, life: 0.9, grav: 16, bounce: 0.2, additive: false });
@@ -616,7 +638,7 @@ export class Game {
     }
     p.alive = false;
     p.state = 'dead';
-    this.ragdolls.spawn(p.topo, p.anim.pts, p.palette, { impulse: [0, 4, 0], impulsePoint: J.CHEST, life: 30, ash: this.dim.ash, blood: this.dim.blood });
+    this.ragdolls.spawn(p.topo, p.anim.pts, p.palette, { impulse: [0, 4, 0], impulsePoint: J.CHEST, life: 30, ash: this.dim.ash, blood: this.dim.blood, body: p.anatomy ? p.anatomy.body : BODIES.hero });
     this.slowmo(2.5, 0.25);
     this.state = 'dying';
     this.dyingT = 2.4;
@@ -654,6 +676,8 @@ export class Game {
     const R = this.R;
     // post fx decay
     R.post_.damage = Math.max(0, R.post_.damage - rawDt * 2.5);
+    this.impactT = Math.max(0, (this.impactT || 0) - rawDt);
+    R.post_.impact = this.impactT > 0 ? 1 : 0;
     R.post_.aberr = damp(R.post_.aberr, 0.25, 3, rawDt);
     R.post_.warp = damp(R.post_.warp, 0.15, 2, rawDt);
     R.post_.desat = damp(R.post_.desat, this.state === 'dying' || this.state === 'dead' ? 0.85 : this.slowT > 0 ? 0.35 : 0, 6, rawDt);
@@ -998,7 +1022,16 @@ export class Game {
     t[2] = damp(t[2], p.z, 14, dt);
     let dist = this.camDist;
     if (this.boss && this.boss.alive) dist += 2.5;
-    const cp = Math.cos(this.camPitch), sp = Math.sin(this.camPitch);
+    let pitch = this.camPitch;
+    if (this.R.ortho) {
+      // pseudo-3D: a high, distant orthographic "diorama" camera; framing is set by the ortho size
+      pitch = clamp(this.camPitch + 0.32, 0.55, 1.05);
+      dist = 80;
+      this.R.orthoDist = dist;
+      // zoom follows the usual camera distance (closer framing for model sheets, wider for bosses)
+      this.R.orthoSize = this.camDist * 0.75 + (this.boss && this.boss.alive ? 3 : 0);
+    }
+    const cp = Math.cos(pitch), sp = Math.sin(pitch);
     const fx = Math.sin(this.camYaw) * cp, fy = -sp, fz = Math.cos(this.camYaw) * cp;
     let px = t[0] - fx * dist, py = t[1] - fy * dist, pz = t[2] - fz * dist;
     // keep above terrain
@@ -1011,6 +1044,7 @@ export class Game {
     px += Math.sin(tt * 1.1) * s; py += Math.sin(tt * 1.7 + 1) * s; pz += Math.cos(tt * 1.3) * s;
     this.camPos[0] = px; this.camPos[1] = py; this.camPos[2] = pz;
     this.fovKick = damp(this.fovKick, 0, 6, dt);
+    this.R.post_.speed = clamp(this.fovKick * 7, 0, 1);
     const fov = 1.05 + this.fovKick + (this.slowT > 0 ? -0.05 : 0);
     this.R.setCamera(px, py, pz, t[0], t[1], t[2], fov);
     this.camFwd[0] = fx; this.camFwd[1] = fy; this.camFwd[2] = fz;
@@ -1036,6 +1070,7 @@ export class Game {
     R.beginFrame();
     const dt = this.state === 'play' || this.state === 'dying' || this.state === 'title' ? (this.simDt ?? rawDt) : 0;
     this.simDt = undefined;
+    tickAnimClock(dt);
     const W = this.world;
     const cx = this.camPos[0], cz = this.camPos[2];
     W.draw(R, this, cx, cz);
@@ -1071,7 +1106,7 @@ export class Game {
       this.player.draw(R);
       R.decal(this.player.x, this.player.y + 0.05, this.player.z, 0.65, 0, 0, 0, 0.5, 0);
     }
-    this.ragdolls.draw(R);
+    this.ragdolls.draw(R, !!(this.style && this.style.models), (x, z) => this.world.height(x, z), drawBody);
     this.abilities.draw(R);
     // hazards (telegraphs)
     for (const h of this.hazards) {

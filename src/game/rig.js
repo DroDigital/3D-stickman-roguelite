@@ -50,6 +50,30 @@ export function drawRig(R, topo, pts, palette, flash = 0, scaleR = 1, skipSegs =
   }
 }
 
+/** "Flesh" pass for non-humanoid creatures: each bone becomes a fuller ellipsoid instead of a thin stick. */
+export function drawFlesh(R, topo, pts, palette, flash = 0, scaleR = 1, k = 1.8, skipSegs = null) {
+  const segs = topo.segs;
+  for (let s = 0; s < segs.length; s++) {
+    if (skipSegs && skipSegs[s]) continue;
+    const g = segs[s];
+    const a = g[0] * 3, b = g[1] * 3;
+    const pal = palette[g[3]];
+    const c = flash > 0 ? shade(pal.c, flash, tmpC) : pal.c;
+    const dx = pts[b] - pts[a], dy = pts[b + 1] - pts[a + 1], dz = pts[b + 2] - pts[a + 2];
+    const e = 0.12;
+    R.segPrim(PRIM.ORB, pts[a] - dx * e, pts[a + 1] - dy * e, pts[a + 2] - dz * e, pts[b] + dx * e, pts[b + 1] + dy * e, pts[b + 2] + dz * e, g[2] * scaleR * k, c, pal.e + flash);
+  }
+  const balls = topo.balls;
+  for (let i = 0; i < balls.length; i++) {
+    const bl = balls[i];
+    const o = bl[0] * 3;
+    const pal = palette[bl[2]];
+    const c = flash > 0 ? shade(pal.c, flash, tmpC) : pal.c;
+    const r = bl[1] * scaleR * (bl[1] < 0.15 ? k * 0.9 : 1);
+    R.trs(PRIM.ORB, pts[o], pts[o + 1], pts[o + 2], 0, 0, 0, r, r, r, c, pal.e + flash);
+  }
+}
+
 // ------------------------------------------------------------------ Verlet ragdolls
 
 class Ragdoll {
@@ -95,6 +119,7 @@ export class Ragdolls {
     rd.ash = opts.ash || [0.2, 0.2, 0.2];
     rd.blood = opts.blood || [0.5, 0.02, 0.05];
     rd.bleedPts = [];
+    rd.body = opts.body || null;
     rd.sink = 0;
     rd.radius = opts.radius ?? 0.06;
     const dt = 1 / 60;
@@ -204,11 +229,16 @@ export class Ragdolls {
     }
   }
 
-  draw(R) {
+  /** models: draw full bodies/flesh (hand-drawn styles); ground needed to pose the feet. */
+  draw(R, models = false, ground = null, drawBodyFn = null) {
     for (const rd of this.list) {
       if (!rd.active) continue;
       const fade = Math.min(1, rd.life / 1.4);
-      drawRig(R, rd.topo, rd.pts, rd.palette, 0, rd.scaleR * (0.4 + 0.6 * fade), rd.skip);
+      const sc = rd.scaleR * (0.4 + 0.6 * fade);
+      const severed = rd.skip && rd.skip.some((x) => x);
+      if (models && rd.body && drawBodyFn && !severed) drawBodyFn(R, rd.body, rd.pts, null, sc, ground, { lod: 1 });
+      else if (models) drawFlesh(R, rd.topo, rd.pts, rd.palette, 0, sc, 1.8, rd.skip);
+      else drawRig(R, rd.topo, rd.pts, rd.palette, 0, sc, rd.skip);
     }
   }
 }
