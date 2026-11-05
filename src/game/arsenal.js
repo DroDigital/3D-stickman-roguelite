@@ -4,6 +4,7 @@ import { PRIM } from '../gfx/renderer.js';
 import { SHAPE } from '../gfx/particles.js';
 import { TAU, clamp } from '../core/math.js';
 import { drawRig } from './rig.js';
+import { L } from '../core/i18n.js';
 
 export const SLOTS = ['blade', 'arms', 'magic', 'power'];
 export const SLOT_INFO = {
@@ -99,7 +100,7 @@ export const ITEMS = {
     slot: 'blade', name: 'Crescent Katana', icon: '🗡', model: 'blade', combo: ['slashR', 'slashL', 'thrust', 'spin'],
     desc: 'A balanced four-cut chain. From Lv 3 the final cut looses a crescent wave.',
     stats: (L) => ({ dmg: lerpL(11, 22, L), speed: 1.05 + L * 0.02, waves: L >= 5 ? 2 : L >= 3 ? 1 : 0 }),
-    lvDesc: (L) => `${Math.round(lerpL(11, 22, L))} damage per cut${L >= 3 ? ` · ${L >= 5 ? 2 : 1} crescent wave${L >= 5 ? 's' : ''}` : ''}`,
+    lvDesc: (lv) => (lv >= 5 ? L('{dmg} damage per cut · 2 crescent waves', { dmg: Math.round(lerpL(11, 22, lv)) }) : lv >= 3 ? L('{dmg} damage per cut · 1 crescent wave', { dmg: Math.round(lerpL(11, 22, lv)) }) : L('{dmg} damage per cut', { dmg: Math.round(lerpL(11, 22, lv)) })),
     onSwing(c, move, idx) {
       if (!c.st.waves || idx !== 0 || c.p.comboIdx % 4 !== 0) return;
       const [dx, dz] = faceDir(c.p);
@@ -110,27 +111,27 @@ export const ITEMS = {
     slot: 'blade', name: 'Twin Fangs', icon: '⚚', model: 'dual', combo: ['dualFlurry', 'dualFlurry', 'dualCross', 'dualFlurry', 'dualFlurry', 'spin'],
     desc: 'Blinding twin-dagger flurries. Every cut opens a bleeding wound.',
     stats: (L) => ({ dmg: lerpL(6, 12, L), speed: 1.4 + L * 0.03, bleed: 1.5 + L }),
-    lvDesc: (L) => `${Math.round(lerpL(6, 12, L))} damage per cut · bleed ${1.5 + L}/s`,
+    lvDesc: (lv) => L('{dmg} damage per cut · bleed {b}/s', { dmg: Math.round(lerpL(6, 12, lv)), b: 1.5 + lv }),
     onHit(c, e) { e.burnT = 2; e.burnDps = Math.max(e.burnDps || 0, c.st.bleed * power(c.g)); e.dotCol = COL.blood; },
   },
   cleaver: {
     slot: 'blade', name: 'Greatcleaver', icon: '⚔', model: 'cleaver', combo: ['slashR', 'overhead', 'slam'],
     desc: 'Slow, enormous arcs. The closing slam sends out a shockwave.',
     stats: (L) => ({ dmg: lerpL(19, 38, L), speed: 0.76 + L * 0.02, shock: 2.6 + L * 0.5 }),
-    lvDesc: (L) => `${Math.round(lerpL(19, 38, L))} damage per arc · ${(2.6 + L * 0.5).toFixed(1)} m shockwave`,
+    lvDesc: (lv) => L('{dmg} damage per arc · {s} m shockwave', { dmg: Math.round(lerpL(19, 38, lv)), s: (2.6 + lv * 0.5).toFixed(1) }),
   },
   scythe: {
     slot: 'blade', name: 'Reaper Scythe', icon: '☾', model: 'scythe', combo: ['reap', 'slashL', 'reap', 'spin'],
     desc: 'Wide reaping arcs. Each reaped soul mends a little of you.',
     stats: (L) => ({ dmg: lerpL(13, 26, L), speed: 0.9 + L * 0.02, leech: 0.6 + L * 0.4 }),
-    lvDesc: (L) => `${Math.round(lerpL(13, 26, L))} damage per arc · heal ${(0.6 + L * 0.4).toFixed(1)} per kill`,
+    lvDesc: (lv) => L('{dmg} damage per arc · heal {h} per kill', { dmg: Math.round(lerpL(13, 26, lv)), h: (0.6 + lv * 0.4).toFixed(1) }),
     onKill(c) { heal(c.g, c.st.leech); },
   },
   spear: {
     slot: 'blade', name: 'Voidspear', icon: '🔱', model: 'spear', combo: ['thrust', 'thrust', 'slashL', 'thrust', 'spin'],
     desc: 'Long-reach thrusts. From Lv 3 thrusts hurl a void lance.',
     stats: (L) => ({ dmg: lerpL(12, 24, L), speed: 1.0 + L * 0.02, lance: L >= 3 }),
-    lvDesc: (L) => `${Math.round(lerpL(12, 24, L))} damage per thrust${L >= 3 ? ' · thrusts hurl a void lance' : ''}`,
+    lvDesc: (lv) => (lv >= 3 ? L('{dmg} damage per thrust · thrusts hurl a void lance', { dmg: Math.round(lerpL(12, 24, lv)) }) : L('{dmg} damage per thrust', { dmg: Math.round(lerpL(12, 24, lv)) })),
     onSwing(c, move, idx) {
       if (!c.st.lance || move.name !== 'thrust' || idx !== 0) return;
       const [dx, dz] = faceDir(c.p);
@@ -141,7 +142,7 @@ export const ITEMS = {
     slot: 'blade', name: 'Spirit Fists', icon: '✊', model: 'fists', combo: ['jab', 'cross', 'hook', 'kick', 'spinKick'],
     desc: 'Rapid strikes and kicks. The fifth blow bursts with a spirit palm.',
     stats: (L) => ({ dmg: lerpL(7, 14, L), speed: 1.28 + L * 0.03, palm: 2.4 + L * 0.3 }),
-    lvDesc: (L) => `${Math.round(lerpL(7, 14, L))} damage per blow · ${(2.4 + L * 0.3).toFixed(1)} m palm burst`,
+    lvDesc: (lv) => L('{dmg} damage per blow · {p} m palm burst', { dmg: Math.round(lerpL(7, 14, lv)), p: (2.4 + lv * 0.3).toFixed(1) }),
     onSwing(c, move, idx) {
       if (move.name !== 'spinKick' || idx !== 0) return;
       const p = c.p;
@@ -154,7 +155,7 @@ export const ITEMS = {
   ofuda: {
     slot: 'arms', name: 'Ofuda Talismans', icon: '📜', desc: 'Homing paper seals that cling to foes and detonate.',
     stats: (L) => ({ dmg: lerpL(9, 18, L), cd: cdL(0.75, L), n: 1 + Math.floor(L / 2) }),
-    lvDesc: (L) => `${1 + Math.floor(L / 2)} seal${L >= 2 ? 's' : ''} · ${Math.round(lerpL(9, 18, L))} blast damage`,
+    lvDesc: (lv) => (lv >= 2 ? L('{n} seals · {dmg} blast damage', { n: 1 + Math.floor(lv / 2), dmg: Math.round(lerpL(9, 18, lv)) }) : L('1 seal · {dmg} blast damage', { dmg: Math.round(lerpL(9, 18, lv)) })),
     fire(c) {
       for (let i = 0; i < c.st.n; i++) {
         const a = Math.atan2(c.aim.dx, c.aim.dz) + (i - (c.st.n - 1) / 2) * 0.45;
@@ -166,25 +167,25 @@ export const ITEMS = {
   bow: {
     slot: 'arms', name: 'Spirit Bow', icon: '🏹', desc: 'Fast spirit arrows that pierce through lines of foes.',
     stats: (L) => ({ dmg: lerpL(10, 20, L), cd: cdL(0.5, L), pierce: 1 + Math.floor(L / 2) }),
-    lvDesc: (L) => `${Math.round(lerpL(10, 20, L))} damage · pierces ${1 + Math.floor(L / 2)}`,
+    lvDesc: (lv) => L('{dmg} damage · pierces {p}', { dmg: Math.round(lerpL(10, 20, lv)), p: 1 + Math.floor(lv / 2) }),
     fire(c) { shoot(c.g, { kind: 'arrow', vx: c.aim.dx * 42, vy: c.aim.dy * 42, vz: c.aim.dz * 42, dmg: c.st.dmg * power(c.g), pierce: c.st.pierce, life: 0.9, color: COL.soul, r: 0.45 }); },
   },
   kunai: {
     slot: 'arms', name: 'Kunai Fan', icon: '✧', desc: 'A fanned volley of throwing knives. Short range, wide spread.',
     stats: (L) => ({ dmg: lerpL(5, 9, L), cd: cdL(0.8, L), n: 3 + L }),
-    lvDesc: (L) => `${3 + L} kunai · ${Math.round(lerpL(5, 9, L))} damage each`,
+    lvDesc: (lv) => L('{n} kunai · {dmg} damage each', { n: 3 + lv, dmg: Math.round(lerpL(5, 9, lv)) }),
     fire(c) { kunaiFan(c, c.st.n, 0.75, false); },
   },
   chakram: {
     slot: 'arms', name: 'Chakram Halo', icon: '◎', desc: 'A ring blade that flies out and returns, cutting both ways.',
     stats: (L) => ({ dmg: lerpL(9, 18, L), cd: cdL(1.2, L), n: L >= 3 ? 2 : 1, range: 11 + L }),
-    lvDesc: (L) => `${L >= 3 ? 2 : 1} chakram · ${Math.round(lerpL(9, 18, L))} damage per pass`,
+    lvDesc: (lv) => (lv >= 3 ? L('2 chakram · {dmg} damage per pass', { dmg: Math.round(lerpL(9, 18, lv)) }) : L('1 chakram · {dmg} damage per pass', { dmg: Math.round(lerpL(9, 18, lv)) })),
     fire(c) { throwChakram(c, false); },
   },
   revolver: {
     slot: 'arms', name: 'Soul Revolver', icon: '🔫', desc: 'Six fast, crit-prone shots, then a reload.',
     stats: (L) => ({ dmg: lerpL(9, 17, L), cd: 0.2, mag: 6, reload: 1.45 * (1 - 0.08 * (L - 1)) }),
-    lvDesc: (L) => `${Math.round(lerpL(9, 17, L))} damage · +15% crit · ${(1.45 * (1 - 0.08 * (L - 1))).toFixed(2)} s reload`,
+    lvDesc: (lv) => L('{dmg} damage · +15% crit · {r} s reload', { dmg: Math.round(lerpL(9, 17, lv)), r: (1.45 * (1 - 0.08 * (lv - 1))).toFixed(2) }),
     fire(c) { revolverShot(c, false); },
   },
 
@@ -192,7 +193,7 @@ export const ITEMS = {
   thunder: {
     slot: 'magic', name: 'Thunder Sigil', icon: 'ϟ', desc: 'Brands the ground with a sigil, then calls a lightning strike that chains.',
     stats: (L) => ({ dmg: lerpL(26, 52, L), cd: cdL(6, L), jumps: 2 + Math.floor(L / 2) }),
-    lvDesc: (L) => `${Math.round(lerpL(26, 52, L))} strike damage · chains ${2 + Math.floor(L / 2)}`,
+    lvDesc: (lv) => L('{dmg} strike damage · chains {j}', { dmg: Math.round(lerpL(26, 52, lv)), j: 2 + Math.floor(lv / 2) }),
     cast(c) {
       const { x, z } = c.aim;
       const dmg = c.st.dmg * power(c.g);
@@ -209,25 +210,25 @@ export const ITEMS = {
   frost: {
     slot: 'magic', name: 'Frost Lotus', icon: '❄', desc: 'A lotus of ice blooms outward, freezing everything it touches.',
     stats: (L) => ({ dmg: lerpL(16, 32, L), cd: cdL(8, L), r: 5 + L * 0.6, freeze: 0.8 + L * 0.15 }),
-    lvDesc: (L) => `${Math.round(lerpL(16, 32, L))} damage · ${(5 + L * 0.6).toFixed(1)} m · freeze ${(0.8 + L * 0.15).toFixed(2)} s`,
+    lvDesc: (lv) => L('{dmg} damage · {r} m · freeze {f} s', { dmg: Math.round(lerpL(16, 32, lv)), r: (5 + lv * 0.6).toFixed(1), f: (0.8 + lv * 0.15).toFixed(2) }),
     cast(c) { c.L_.ring(c.p.x, c.p.z, c.st.r, 0.4, COL.ice, (e) => strike(c.g, e, c.st.dmg * power(c.g), { source: 'frost', color: COL.ice, freeze: c.st.freeze, kb: 3 })); c.g.audio.play('zap', 0.7); },
   },
   hellfire: {
     slot: 'magic', name: 'Hellfire Kanji', icon: '✹', desc: 'Writes a line of burning glyphs that erupt into fire pillars.',
     stats: (L) => ({ dmg: lerpL(15, 30, L), cd: cdL(7, L), n: 4 + L, burn: 3 + L * 1.5 }),
-    lvDesc: (L) => `${4 + L} pillars · ${Math.round(lerpL(15, 30, L))} damage · burn ${3 + L * 1.5}/s`,
+    lvDesc: (lv) => L('{n} pillars · {dmg} damage · burn {b}/s', { n: 4 + lv, dmg: Math.round(lerpL(15, 30, lv)), b: 3 + lv * 1.5 }),
     cast(c) { pillarLine(c, c.st.n, 1.8, c.st.dmg * power(c.g), c.st.burn * power(c.g)); },
   },
   bloodmoon: {
     slot: 'magic', name: 'Blood Moon', icon: '◐', desc: 'Raises a crimson moon that drains nearby foes and feeds you.',
     stats: (L) => ({ dmg: lerpL(4, 9, L), cd: cdL(12, L), dur: 4 + L * 0.4, r: 6.5 }),
-    lvDesc: (L) => `${(4 + L * 0.4).toFixed(1)} s · drains ${Math.round(lerpL(4, 9, L))} per pulse`,
+    lvDesc: (lv) => L('{d} s · drains {dmg} per pulse', { d: (4 + lv * 0.4).toFixed(1), dmg: Math.round(lerpL(4, 9, lv)) }),
     cast(c) { bloodMoon(c, c.st.dur, c.st.r, c.st.dmg, false); },
   },
   voidorb: {
     slot: 'magic', name: 'Void Orb', icon: '◉', desc: 'A slow orb of nothing that drags foes in, grinds them and bursts.',
     stats: (L) => ({ dmg: lerpL(6, 12, L), cd: cdL(9, L), r: 4.5 + L * 0.4 }),
-    lvDesc: (L) => `${(4.5 + L * 0.4).toFixed(1)} m pull · ${Math.round(lerpL(6, 12, L))} per tick`,
+    lvDesc: (lv) => L('{r} m pull · {dmg} per tick', { r: (4.5 + lv * 0.4).toFixed(1), dmg: Math.round(lerpL(6, 12, lv)) }),
     cast(c) {
       const dmg = c.st.dmg * power(c.g), r = c.st.r;
       shoot(c.g, { kind: 'orb', vx: c.aim.dx * 6, vz: c.aim.dz * 6, life: 3, pierce: 999, dmg: 0, r: 0.1, color: COL.void, noGround: true, groundSkim: true,
@@ -240,31 +241,31 @@ export const ITEMS = {
   afterimage: {
     slot: 'power', name: 'Afterimage', icon: '◈', desc: 'Dash through space; the shadows you leave behind strike on their own.',
     stats: (L) => ({ dmg: lerpL(16, 34, L), cd: cdL(10, L), n: 2 + Math.floor(L / 2) }),
-    lvDesc: (L) => `${2 + Math.floor(L / 2)} shadows · ${Math.round(lerpL(16, 34, L))} damage each`,
+    lvDesc: (lv) => L('{n} shadows · {dmg} damage each', { n: 2 + Math.floor(lv / 2), dmg: Math.round(lerpL(16, 34, lv)) }),
     cast(c) { afterimageDash(c, c.st.n, c.st.dmg); },
   },
   gravity: {
     slot: 'power', name: 'Gravity Crush', icon: '▼', desc: 'Drags every foe nearby into you, then slams the ground flat.',
     stats: (L) => ({ dmg: lerpL(28, 60, L), cd: cdL(12, L), r: 7 + L * 0.6 }),
-    lvDesc: (L) => `${(7 + L * 0.6).toFixed(1)} m pull · ${Math.round(lerpL(28, 60, L))} slam damage`,
+    lvDesc: (lv) => L('{r} m pull · {dmg} slam damage', { r: (7 + lv * 0.6).toFixed(1), dmg: Math.round(lerpL(28, 60, lv)) }),
     cast(c) { gravityCrush(c, c.st.r, c.st.dmg, false); },
   },
   chrono: {
     slot: 'power', name: 'Chrono Stop', icon: '⌛', desc: 'Stops time for everything but you. Frozen foes take 25% more damage.',
     stats: (L) => ({ cd: cdL(18, L), dur: 2 + L * 0.3 }),
-    lvDesc: (L) => `${(2 + L * 0.3).toFixed(1)} s of stopped time`,
+    lvDesc: (lv) => L('{d} s of stopped time', { d: (2 + lv * 0.3).toFixed(1) }),
     cast(c) { c.g.timeStop(c.st.dur); },
   },
   berserk: {
     slot: 'power', name: 'Berserk Aura', icon: '☠', desc: 'Burn hot: faster attacks, more damage and a scorching aura.',
     stats: (L) => ({ cd: cdL(20, L), dur: 5 + L * 0.5, dps: 6 + L * 2 }),
-    lvDesc: (L) => `${(5 + L * 0.5).toFixed(1)} s · +35% attack speed · +${25 + L * 5}% damage`,
+    lvDesc: (lv) => L('{d} s · +35% attack speed · +{dmg}% damage', { d: (5 + lv * 0.5).toFixed(1), dmg: 25 + lv * 5 }),
     cast(c) { const b = c.p.buffs; b.berserkT = c.st.dur; b.berserkL = c.level; b.berserkDps = c.st.dps; c.g.audio.play('roar', 0.5); c.g.shake(0.3); },
   },
   phantom: {
     slot: 'power', name: 'Phantom Arms', icon: '☸', desc: 'Summons spectral arms that orbit you and pummel anything close.',
     stats: (L) => ({ dmg: lerpL(8, 16, L), cd: cdL(16, L), n: 2 + Math.floor(L / 2), dur: 8 }),
-    lvDesc: (L) => `${2 + Math.floor(L / 2)} arms for 8 s · ${Math.round(lerpL(8, 16, L))} per punch`,
+    lvDesc: (lv) => L('{n} arms for 8 s · {dmg} per punch', { n: 2 + Math.floor(lv / 2), dmg: Math.round(lerpL(8, 16, lv)) }),
     cast(c) { phantomArms(c, c.st.n, c.st.dmg, c.st.dur, false); },
   },
 

@@ -128,6 +128,14 @@ Each dimension has its own lighting, fog, sky (with a nebula and a watching ecli
 - The scene renders at a low internal resolution with vertex snapping and is upscaled nearest-neighbour.
 - Post-processing adds ordered dithering with colour quantisation, bloom, chromatic aberration, a reality-warp effect, film grain and a vignette.
 
+## Languages
+
+The game ships in **English**, **Deutsch** and **Español**. Pick one in **Settings → Language**. The first time you play, it follows your browser's language when that is one of the three, and otherwise English. The choice is saved with your settings.
+
+Everything the player reads is translated: menus, the HUD, announcements, item, upgrade, skill, enemy, boss and dimension names and descriptions, and the level-up and skill-tree text.
+
+Translations live in `src/core/locales/`. The English text is the key, so `L("+{v} damage", { v: 12 })` returns the active language's text, or the English text when a translation is missing. Placeholders such as `{v}` must appear in every translation. `tests/i18n.test.js` fails if any shown string has no German or Spanish translation, or if a translation drops a placeholder. To add a language, create a locale file, add it to `DICT` and `LANGS` in `src/core/i18n.js`, and fill in every string the test lists.
+
 ## Art style: Ink Requiem
 
 The game's look is **Ink Requiem**: 90s OVA colour cel shading with black boiling ink lines, drawn on twos, with an anime sound set. It was chosen from three asset packs; the others stay available in **Settings → Art style**, or with `?style=` in the URL, for example `http://localhost:8080/?style=sutra`. Each pack bundles a render style, its own cast of character designs, effects, animation timing, a camera and a sound set.

@@ -3,6 +3,7 @@ import { project, clamp } from '../core/math.js';
 import { RARITY } from '../game/config.js';
 import { SKILLS, SKILL_BY_ID } from '../game/meta.js';
 import { ITEMS, SLOTS, SLOT_INFO, MAX_LEVEL, recipesFor } from '../game/arsenal.js';
+import { L, applyStaticI18n, setLang, getLang } from '../core/i18n.js';
 import { CHEST_TIERS } from '../game/world.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -59,7 +60,7 @@ export class UI {
     $('#tree-reset').onclick = () => {
       const spent = this.meta.totalSpent();
       if (spent <= 0) return;
-      if (!confirm(`Reset the Ossuary and refund ${spent} echoes?`)) return;
+      if (!confirm(L('Reset the Ossuary and refund {n} echoes?', { n: spent }))) return;
       this.meta.reset();
       this.audio.play('levelup');
       this.renderTree();
@@ -67,6 +68,9 @@ export class UI {
     $('#settings-close').onclick = () => this.showSettings(false);
     const q = $('#set-quality'), v = $('#set-volume'), s = $('#set-sens'), sh = $('#set-shake');
     const st = this.meta.data.settings;
+    const lg = $('#set-lang');
+    lg.value = getLang();
+    lg.onchange = () => { st.lang = lg.value; setLang(st.lang); this.meta.save(); this.applyLanguage(); };
     q.value = String(st.quality); v.value = String(st.volume); s.value = String(st.sensitivity); sh.value = String(st.shake);
     q.onchange = () => { st.quality = Number(q.value); if (!game.style || !game.style.toon) game.R.setQuality(st.quality); this.meta.save(); };
     const sty = $('#set-style');
@@ -79,7 +83,7 @@ export class UI {
     lk.value = String(st.lockAssist ?? 1); fl.value = String(st.lockFlick ?? 1);
     lk.oninput = () => { st.lockAssist = Number(lk.value); this.meta.save(); };
     fl.oninput = () => { st.lockFlick = Number(fl.value); this.meta.save(); };
-    this.updateMenuStats();
+    this.applyLanguage();
   }
 
   /** Re-theme the UI for an art pack (CSS variables keyed off body[data-pack]); the overlay canvas reads them back. */
@@ -91,6 +95,13 @@ export class UI {
       const v = cs.getPropertyValue(`--${k}`).trim();
       if (v) this.pal[k] = v;
     }
+  }
+
+  /** Re-translate the parts of the UI that aren't redrawn every frame. */
+  applyLanguage() {
+    applyStaticI18n();
+    this.updateMenuStats();
+    if (!this.el.tree.classList.contains('hidden')) this.renderTree();
   }
 
   toTitle() {
@@ -105,8 +116,8 @@ export class UI {
     const d = this.meta.data;
     $('#menu-echoes').textContent = d.echoes;
     $('#menu-stats').textContent = d.stats.runs
-      ? `Runs ${d.stats.runs} · Deepest ${d.stats.bestDepth} · Bosses slain ${d.stats.bosses} · Kills ${d.stats.kills}`
-      : 'No descents yet.';
+      ? L('Runs {runs} · Deepest {deep} · Bosses slain {bosses} · Kills {kills}', { runs: d.stats.runs, deep: d.stats.bestDepth, bosses: d.stats.bosses, kills: d.stats.kills })
+      : L('No descents yet.');
   }
 
   showMenu(on) {
@@ -125,7 +136,7 @@ export class UI {
     // letters slam in one by one, like an anime episode title
     const letters = [...String(name)].map((ch, i) => (ch === ' ' ? ' ' : `<i style="--i:${i}">${esc(ch)}</i>`)).join('');
     const tape = boss ? '<div class="tc-tape top"></div><div class="tc-tape bottom"></div>' : '';
-    t.innerHTML = `${tape}<div class="tc-band"><div class="tc-tag">${esc(boss ? 'WARNING · BOSS' : tag)}</div><div class="tc-name">${letters}</div><div class="tc-sub">${esc(sub)}</div></div>`;
+    t.innerHTML = `${tape}<div class="tc-band"><div class="tc-tag">${esc(boss ? L('WARNING · BOSS') : tag)}</div><div class="tc-name">${letters}</div><div class="tc-sub">${esc(sub)}</div></div>`;
     t.classList.toggle('boss', boss);
     t.classList.remove('show');
     void t.offsetWidth;
@@ -154,11 +165,11 @@ export class UI {
     o.offers = offers;
     const el = this.el.offers;
     el.classList.remove('hidden');
-    const L = this.game && this.game.player ? this.game.player.loadout : null;
-    const cards = offers.map((of, i) => this._card(of, i, L)).join('');
+    const ld = this.game && this.game.player ? this.game.player.loadout : null;
+    const cards = offers.map((of, i) => this._card(of, i, ld)).join('');
     el.innerHTML = `<div class="offers-head"><h2>${esc(o.title)}</h2><p>${esc(o.subtitle || '')}</p></div>
       <div class="offers-row">${cards}</div>
-      <div class="offers-foot">${o.rerolls > 0 ? `<button id="btn-reroll" class="btn ghost">Reroll (${o.rerolls}) <kbd>X</kbd></button>` : '<span class="muted">No rerolls</span>'}</div>`;
+      <div class="offers-foot">${o.rerolls > 0 ? `<button id="btn-reroll" class="btn ghost">${L('Reroll ({n})', { n: o.rerolls })} <kbd>X</kbd></button>` : `<span class="muted">${L('No rerolls')}</span>`}</div>`;
     el.querySelectorAll('.card').forEach((c) => {
       c.onclick = () => this.pickIndex(Number(c.dataset.i));
       c.onmouseenter = () => this.audio.play('ui');
@@ -167,13 +178,13 @@ export class UI {
     if (rb) rb.onclick = () => this.reroll();
   }
 
-  _card(of, i, L) {
+  _card(of, i, ld) {
     const r = RARITY[of.rarity];
     const pips = Array.from({ length: RARITY.length }, (_, k) => `<i class="${k <= of.rarity ? 'on' : ''}"></i>`).join('');
     if (of.kind === 'evolve') {
       return `<button class="card evolve" data-i="${i}" style="--ec:${of.color}">
         <div class="card-glow"></div>
-        <div class="card-rarity">Evolution<span class="pips">${pips}</span></div>
+        <div class="card-rarity">${L('Evolution')}<span class="pips">${pips}</span></div>
         <div class="card-icon">${esc(of.icon)}</div>
         <div class="card-name">${esc(of.name)}</div>
         <div class="card-recipe">${esc(of.from)} <b>${esc(of.mark)}</b> ${esc(of.with)}</div>
@@ -182,12 +193,12 @@ export class UI {
       </button>`;
     }
     if (of.kind === 'item') {
-      const tag = of.mode === 'new' ? 'New' : of.mode === 'level' ? `Lv ${of.level} → ${of.next}` : `Replaces ${of.replaces}`;
-      const marks = (of.marks || []).map((m) => `<div class="card-mark${m.owned ? ' owned' : ''}" style="--mc:${m.color}"><b>${esc(m.mark)}</b><span>${m.asBase ? '' : 'Feeds '}${esc(m.into)} · with ${esc(m.partner)}${m.owned ? ' ✓' : ''}</span></div>`).join('');
+      const tag = of.mode === 'new' ? L('New') : of.mode === 'level' ? L('Lv {a} → {b}', { a: of.level, b: of.next }) : L('Replaces {name}', { name: of.replaces });
+      const marks = (of.marks || []).map((m) => `<div class="card-mark${m.owned ? ' owned' : ''}" style="--mc:${m.color}"><b>${esc(m.mark)}</b><span>${m.asBase ? '' : `${L('Feeds')} `}${esc(m.into)} · ${L('with')} ${esc(m.partner)}${m.owned ? ' ✓' : ''}</span></div>`).join('');
       return `<button class="card r-${r.id}" data-i="${i}" style="--rc:${r.hex}">
         <div class="card-glow"></div>
-        <div class="card-rarity">${r.name}<span class="pips">${pips}</span></div>
-        <div class="card-slot">${SLOT_INFO[of.slot].name} · ${SLOT_INFO[of.slot].key}</div>
+        <div class="card-rarity">${L(r.name)}<span class="pips">${pips}</span></div>
+        <div class="card-slot">${L(SLOT_INFO[of.slot].name)} · ${SLOT_INFO[of.slot].key}</div>
         <div class="card-icon">${esc(of.icon)}</div>
         <div class="card-name">${esc(of.name)}</div>
         <div class="card-lv">${esc(tag)}</div>
@@ -198,10 +209,10 @@ export class UI {
     }
     return `<button class="card r-${r.id}" data-i="${i}" style="--rc:${r.hex}">
       <div class="card-glow"></div>
-      <div class="card-rarity">${r.name}<span class="pips">${pips}</span></div>
+      <div class="card-rarity">${L(r.name)}<span class="pips">${pips}</span></div>
       <div class="card-icon">${esc(of.icon)}</div>
       <div class="card-name">${esc(of.name)}</div>
-      <div class="card-kind">Attribute</div>
+      <div class="card-kind">${L('Attribute')}</div>
       <div class="card-desc">${esc(of.desc)}</div>
       <div class="card-key">${i + 1}</div>
     </button>`;
@@ -231,8 +242,8 @@ export class UI {
     const el = this.el.gameover;
     el.classList.remove('hidden');
     $('#go-stats').innerHTML = [
-      ['Depth reached', r.depth + 1], ['Time survived', fmtTime(r.time)], ['Level', r.level], ['Foes unmade', r.kills],
-      ['Bosses slain', r.bosses], ['Containers opened', r.chests], ['Waves survived', r.waves || 0], ['Evolutions', r.evolutions || 0],
+      [L('Depth reached'), r.depth + 1], [L('Time survived'), fmtTime(r.time)], [L('Level'), r.level], [L('Foes unmade'), r.kills],
+      [L('Bosses slain'), r.bosses], [L('Containers opened'), r.chests], [L('Waves survived'), r.waves || 0], [L('Evolutions'), r.evolutions || 0],
     ].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('');
     $('#go-echoes').textContent = `+${r.echoes}`;
     $('#go-total').textContent = r.total;
@@ -270,17 +281,17 @@ export class UI {
       const can = m.canBuy(s.id);
       const cost = m.nextCost(s.id);
       const cls = [`node`, `b-${s.branch}`, r > 0 ? 'owned' : '', r >= s.max ? 'maxed' : '', unlocked ? '' : 'locked', can ? 'can' : ''].join(' ');
-      const tip = `${s.name}\n${s.desc(Math.max(1, r))}${r < s.max ? `\nNext: ${s.desc(r + 1)} — ${cost} echoes` : '\nMastered'}`;
+      const tip = `${L(s.name)}\n${s.desc(Math.max(1, r))}${r < s.max ? `\n${L('Next')}: ${s.desc(r + 1)} — ${cost} ${L('echoes')}` : `\n${L('Mastered')}`}`;
       return `<button class="${cls}" style="left:${x}px;top:${y}px" data-id="${s.id}" title="${esc(tip)}">
         <span class="node-rank">${s.max > 1 ? `${r}/${s.max}` : r ? '✓' : ''}</span>
-        <span class="node-name">${esc(s.name)}</span>
+        <span class="node-name">${esc(L(s.name))}</span>
       </button>`;
     }).join('');
     canvas.innerHTML = `<svg width="${W}" height="${H}">${lines}</svg>${nodes}
-      <div class="branch-label" style="left:${cx}px;top:${cy - scale * 3.95}px">BODY</div>
-      <div class="branch-label" style="left:${cx + scale * 3.95}px;top:${cy}px">BLADE</div>
-      <div class="branch-label" style="left:${cx}px;top:${cy + scale * 3.95}px">MIND</div>
-      <div class="branch-label" style="left:${cx - scale * 3.95}px;top:${cy}px">RIFT</div>`;
+      <div class="branch-label" style="left:${cx}px;top:${cy - scale * 3.95}px">${L('BODY')}</div>
+      <div class="branch-label" style="left:${cx + scale * 3.95}px;top:${cy}px">${L('BLADE')}</div>
+      <div class="branch-label" style="left:${cx}px;top:${cy + scale * 3.95}px">${L('MIND')}</div>
+      <div class="branch-label" style="left:${cx - scale * 3.95}px;top:${cy}px">${L('RIFT')}</div>`;
     canvas.querySelectorAll('.node').forEach((n) => {
       n.onclick = () => {
         const id = n.dataset.id;
@@ -295,8 +306,8 @@ export class UI {
     const s = SKILL_BY_ID[id];
     const m = this.meta;
     const r = m.rank(id);
-    const next = r < s.max ? `<p>Next rank: <b>${esc(s.desc(r + 1))}</b></p><p class="cost ${m.canBuy(id) ? 'ok' : ''}">${m.nextCost(id)} echoes${m.isUnlocked(id) ? '' : ' · locked'}</p>` : '<p class="cost ok">Mastered</p>';
-    $('#tree-detail').innerHTML = `<h3>${esc(s.name)}</h3><p class="muted">${s.branch.toUpperCase()} · Rank ${r}/${s.max}</p>${r ? `<p>Current: ${esc(s.desc(r))}</p>` : ''}${next}`;
+    const next = r < s.max ? `<p>${L('Next rank')}: <b>${esc(s.desc(r + 1))}</b></p><p class="cost ${m.canBuy(id) ? 'ok' : ''}">${m.nextCost(id)} ${L('echoes')}${m.isUnlocked(id) ? '' : ` · ${L('locked')}`}</p>` : `<p class="cost ok">${L('Mastered')}</p>`;
+    $('#tree-detail').innerHTML = `<h3>${esc(L(s.name))}</h3><p class="muted">${L(s.branch.toUpperCase())} · ${L('Rank')} ${r}/${s.max}</p>${r ? `<p>${L('Current')}: ${esc(s.desc(r))}</p>` : ''}${next}`;
   }
 
   // ------------------------------------------------------------ per-frame HUD
@@ -308,7 +319,7 @@ export class UI {
     fx.last = now;
     const hpFrac = clamp(p.hp / p.stats.maxHp, 0, 1);
     e.hpFill.style.width = `${hpFrac * 100}%`;
-    e.hpText.textContent = `HP ${Math.max(0, Math.ceil(p.hp))} / ${Math.round(p.stats.maxHp)}`;
+    e.hpText.textContent = `${L('HP')} ${Math.max(0, Math.ceil(p.hp))} / ${Math.round(p.stats.maxHp)}`;
     // the white "ghost" bar holds where the health was, then drains down to it
     if (fx.hp >= 0 && p.hp < fx.hp - 0.5) {
       fx.ghostHold = 0.4;
@@ -336,17 +347,17 @@ export class UI {
     if (p.shards !== fx.shards) { if (fx.shards >= 0 && p.shards > fx.shards) pop(e.chipShards, 'scale(1.35) translateY(-4px)', 'skewX(-12deg)'); fx.shards = p.shards; e.shards.textContent = p.shards; }
     e.timer.textContent = fmtTime(g.run.time);
     e.kills.textContent = g.run.kills;
-    e.depth.textContent = `${g.mode === 'arena' ? 'Rift Sanctum' : g.dim.name} · Depth ${g.depth + 1}`;
+    e.depth.textContent = `${g.mode === 'arena' ? L('Rift Sanctum') : L(g.dim.name)} · ${L('Depth {n}', { n: g.depth + 1 })}`;
     // objective
     let obj = '';
     if (g.mode === 'open') {
       const done = g.world.obelisks.filter((o) => o.done).length;
-      if (g.world.portal) obj = `<b class="warn">Rift closes in ${fmtTime(Math.max(0, g.world.portal.timer))}</b> — reach it to face the guardian`;
-      else obj = `Rift opens in <b>${fmtTime(Math.max(0, g.portalTimer))}</b> · Obelisks <b>${done}/3</b>`;
-      if (g.activeObelisk) obj += ` · <span class="good">Awakening ${Math.floor(g.activeObelisk.charge * 100)}%</span>`;
-    } else if (g.boss) obj = 'Destroy the guardian';
-    else if (g.world.exitPortal) obj = g.world.exitPortal.armed ? '<span class="good">Step through the rift to descend deeper</span>' : '<span class="good">Gather the spoils — the rift is stabilising</span>';
-    else obj = 'The sanctum trembles...';
+      if (g.world.portal) obj = `<b class="warn">${L('Rift closes in {t}', { t: fmtTime(Math.max(0, g.world.portal.timer)) })}</b> — ${L('reach it to face the guardian')}`;
+      else obj = `${L('Rift opens in {t}', { t: `<b>${fmtTime(Math.max(0, g.portalTimer))}</b>` })} · ${L('Obelisks')} <b>${done}/3</b>`;
+      if (g.activeObelisk) obj += ` · <span class="good">${L('Awakening {p}%', { p: Math.floor(g.activeObelisk.charge * 100) })}</span>`;
+    } else if (g.boss) obj = L('Destroy the guardian');
+    else if (g.world.exitPortal) obj = g.world.exitPortal.armed ? `<span class="good">${L('Step through the rift to descend deeper')}</span>` : `<span class="good">${L('Gather the spoils — the rift is stabilising')}</span>`;
+    else obj = L('The sanctum trembles...');
     if (obj !== this._lastObj) {
       // only pop when the objective itself changes, not on every timer tick
       const kind = obj.replace(/<[^>]+>|[\d:%/]+/g, '');
@@ -356,7 +367,8 @@ export class UI {
     // wave tracker
     const sp = g.spawner;
     if (g.mode === 'open' && sp) {
-      const label = sp.active ? `${sp.kind === 'elite' ? 'Elite wave' : sp.kind === 'tide' ? 'Tide wave' : 'Wave'} ${g.wavesTotal}` : `Next wave ${Math.ceil(Math.max(0, sp.breathT))}s`;
+      const kindLabel = sp.kind === 'elite' ? L('Elite wave') : sp.kind === 'tide' ? L('Tide wave') : L('Wave');
+      const label = sp.active ? `${kindLabel} ${g.wavesTotal}` : L('Next wave {s}s', { s: Math.ceil(Math.max(0, sp.breathT)) });
       if (label !== fx.wave) { e.waveLabel.textContent = label; fx.wave = label; e.wave.className = sp.active ? sp.kind : 'rest'; pop(e.waveLabel, 'scale(1.3)'); }
       e.waveFill.style.width = `${(sp.active ? 1 - sp.progress : 0) * 100}%`;
       e.wave.style.display = '';
@@ -364,7 +376,7 @@ export class UI {
     // boss
     if (g.boss && g.boss.alive && g.boss.state !== 'spawn') {
       e.boss.classList.remove('hidden');
-      e.bossName.textContent = g.boss.name;
+      e.bossName.textContent = L(g.boss.name);
       const bf = clamp(g.boss.hp / g.boss.maxHp, 0, 1);
       if (fx.bossId !== g.boss) { fx.bossId = g.boss; fx.bossGhost = bf; }
       if (bf < fx.bossGhost - 0.001) fx.bossHold = fx.bossHold > 0 ? fx.bossHold : 0.35;
@@ -374,39 +386,39 @@ export class UI {
       e.bossGhost.style.width = `${fx.bossGhost * 100}%`;
     } else e.boss.classList.add('hidden');
     this._updateSlots(g, p);
-    const bk = p.buffs.berserkT > 0 ? `<span class="buff">Berserk ${p.buffs.berserkT.toFixed(1)}s</span>` : '';
+    const bk = p.buffs.berserkT > 0 ? `<span class="buff">${L('Berserk {s}s', { s: p.buffs.berserkT.toFixed(1) })}</span>` : '';
     if (bk !== this._lastBuff) { e.buffs.innerHTML = bk; this._lastBuff = bk; }
   }
 
   /** The four-slot bar: rebuilt when the loadout changes, cooldowns and ammo updated every frame. */
   _updateSlots(g, p) {
-    const L = p.loadout, fx = this.fx;
-    const ready = new Set(L.readyEvolutions(p.stats.evoDiscount || 0).map((r) => r.base));
-    const key = SLOTS.map((k) => { const s = L.get(k); return s ? `${s.id}:${s.level}` : '-'; }).join('|') + [...ready].join(',');
+    const ld = p.loadout, fx = this.fx;
+    const ready = new Set(ld.readyEvolutions(p.stats.evoDiscount || 0).map((r) => r.base));
+    const key = SLOTS.map((k) => { const s = ld.get(k); return s ? `${s.id}:${s.level}` : '-'; }).join('|') + [...ready].join(',');
     if (key !== fx.slotKey) {
       fx.slotKey = key;
       this.el.slots.innerHTML = SLOTS.map((k) => {
-        const s = L.get(k), info = SLOT_INFO[k];
-        if (!s) return `<div class="slot empty" data-slot="${k}"><div class="slot-key">${info.key} · ${info.name}</div></div>`;
+        const s = ld.get(k), info = SLOT_INFO[k];
+        if (!s) return `<div class="slot empty" data-slot="${k}"><div class="slot-key">${info.key} · ${L(info.name)}</div></div>`;
         const def = ITEMS[s.id];
-        const lv = def.evolved ? '<div class="slot-lv evo">EVOLVED</div>' : `<div class="slot-lv">${Array.from({ length: MAX_LEVEL }, (_, i) => `<i class="${i < s.level ? 'on' : ''}"></i>`).join('')}</div>`;
+        const lv = def.evolved ? `<div class="slot-lv evo">${L('EVOLVED')}</div>` : `<div class="slot-lv">${Array.from({ length: MAX_LEVEL }, (_, i) => `<i class="${i < s.level ? 'on' : ''}"></i>`).join('')}</div>`;
         const marks = def.evolved ? '' : recipesFor(s.id).map((r) => {
           const partner = r.base === s.id ? r.with : r.base;
-          return `<b class="${L.has(partner) ? 'lit' : ''}" style="--mc:${r.color}" title="${esc(ITEMS[r.into].name)}">${esc(r.mark)}</b>`;
+          return `<b class="${ld.has(partner) ? 'lit' : ''}" style="--mc:${r.color}" title="${esc(L(ITEMS[r.into].name))}">${esc(r.mark)}</b>`;
         }).join('');
-        return `<div class="slot${ready.has(s.id) ? ' ready-evo' : ''}" data-slot="${k}"><div class="slot-key">${info.key}</div><div class="slot-icon">${esc(def.icon)}</div><div class="slot-cd"></div>${lv}<div class="slot-marks">${marks}</div><span class="slot-ammo"></span><div class="slot-name">${esc(def.name)}</div></div>`;
+        return `<div class="slot${ready.has(s.id) ? ' ready-evo' : ''}" data-slot="${k}"><div class="slot-key">${info.key}</div><div class="slot-icon">${esc(def.icon)}</div><div class="slot-cd"></div>${lv}<div class="slot-marks">${marks}</div><span class="slot-ammo"></span><div class="slot-name">${esc(L(def.name))}</div></div>`;
       }).join('');
       this._slotEls = {};
       for (const el of this.el.slots.children) this._slotEls[el.dataset.slot] = el;
     }
     for (const k of SLOTS) {
-      const s = L.get(k), el = this._slotEls && this._slotEls[k];
+      const s = ld.get(k), el = this._slotEls && this._slotEls[k];
       if (!s || !el) continue;
       const cd = s.max > 0 ? Math.max(0, s.cd) / s.max : 0;
       const shown = k === 'arms' && cd < 0.99 ? 0 : cd;
       el.style.setProperty('--cd', (s.state.reloadT > 0 ? 1 : shown).toFixed(3));
       if (s.state.ammo !== undefined) {
-        const t = s.state.reloadT > 0 ? 'RELOAD' : `${s.state.ammo}`;
+        const t = s.state.reloadT > 0 ? L('RELOAD') : `${s.state.ammo}`;
         const a = el.querySelector('.slot-ammo');
         if (a && a.textContent !== t) a.textContent = t;
       }
@@ -478,7 +490,7 @@ export class UI {
       ctx.fillStyle = e.elite ? P.hi : P.accent; ctx.fillRect(0, 0, w * clamp(e.hp / e.maxHp, 0, 1), h);
       ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(0, 0, w * clamp(e.hp / e.maxHp, 0, 1), 2);
       ctx.restore();
-      if (e.elite) this._inkText(ctx, `ELDRITCH ${e.name.toUpperCase()}`, t[0], t[1] - 11, `italic 12px ${DISPLAY}`, P.hi, 3, 0);
+      if (e.elite) this._inkText(ctx, `${L('ELDRITCH')} ${L(e.name).toUpperCase()}`, t[0], t[1] - 11, `italic 12px ${DISPLAY}`, P.hi, 3, 0);
     }
     // markers: portal, obelisks, nearby chests
     const markers = [];
@@ -498,14 +510,14 @@ export class UI {
       if (project(vp, ch.x, ch.y + 2.3, ch.z, W, H, t)) {
         const cost = W_.chestCost(ch, g.player.stats.chestDiscount);
         const afford = g.player.shards >= cost;
-        this._bubble(ctx, t[0], t[1] - 6, `Open ${CHEST_TIERS[ch.tier].name}`, `${cost} ◆`, 'E', afford);
+        this._bubble(ctx, t[0], t[1] - 6, L('Open {tier}', { tier: L(CHEST_TIERS[ch.tier].name) }), `${cost} ◆`, 'E', afford);
       }
     }
     if (g.state === 'play' && g.player.alive) {
-      if (g.player.ult >= 1) this._banner(ctx, W / 2, H * 0.7, 'REND REALITY READY', 'R', two ? P.gold : P.hi, 17, 0.04);
-      if (g.timeStopT > 0) this._banner(ctx, W / 2 + (two ? 2 : -2), H * 0.2, 'TIME STOP', '', P.cyan, 30, -0.05);
+      if (g.player.ult >= 1) this._banner(ctx, W / 2, H * 0.7, L('REND REALITY READY'), 'R', two ? P.gold : P.hi, 17, 0.04);
+      if (g.timeStopT > 0) this._banner(ctx, W / 2 + (two ? 2 : -2), H * 0.2, L('TIME STOP'), '', P.cyan, 30, -0.05);
       if (g.lock && g.lock.alive) this._reticle(ctx, g, g.lock, W, H);
-      if (!g.input.locked && !g.input.usingPad) this._banner(ctx, W / 2, H - 52, 'Click the screen to enable mouse look', '', P.paper, 13, 0, true);
+      if (!g.input.locked && !g.input.usingPad) this._banner(ctx, W / 2, H - 52, L('Click the screen to enable mouse look'), '', P.paper, 13, 0, true);
     }
   }
 
@@ -534,7 +546,7 @@ export class UI {
     ctx.fillStyle = P.ink; ctx.fillRect(-2, -2, w + 4, 9);
     ctx.fillStyle = P.accent; ctx.fillRect(0, 0, w * f, 5);
     ctx.restore();
-    this._inkText(ctx, e.name.toUpperCase(), t[0], t[1] + r + 30, `italic 13px ${DISPLAY}`, P.paper, 3, 2);
+    this._inkText(ctx, L(e.name).toUpperCase(), t[0], t[1] + r + 30, `italic 13px ${DISPLAY}`, P.paper, 3, 2);
   }
 
   /** Display text with a hard ink outline and offset drop shadow. */
@@ -686,9 +698,9 @@ export class UI {
       ctx.translate(2, 2); diamond(13); ctx.fillStyle = P.ink; ctx.fill(); ctx.translate(-2, -2);
       diamond(13); ctx.fillStyle = P.paper; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = P.ink; ctx.stroke();
       diamond(6); ctx.fillStyle = m.color; ctx.fill();
-      this._inkText(ctx, m.label, 0, -26, `italic 14px ${DISPLAY}`, m.color, 4, 2);
+      this._inkText(ctx, L(m.label), 0, -26, `italic 14px ${DISPLAY}`, m.color, 4, 2);
       ctx.font = `700 11px ${BODY}`;
-      const dl = `${Math.round(d)}m`;
+      const dl = L('{n} m', { n: Math.round(d) });
       const dw = ctx.measureText(dl).width + 10;
       ctx.fillStyle = P.ink; ctx.fillRect(-dw / 2, 17, dw, 15);
       ctx.fillStyle = P.paper; ctx.fillText(dl, 0, 25);

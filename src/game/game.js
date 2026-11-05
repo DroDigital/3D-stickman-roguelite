@@ -1,5 +1,6 @@
 // Game orchestrator: run lifecycle, dimensions, waves and scaling, camera and lock-on, combat resolution, hazards,
 // projectiles, pickups and rendering.
+import { L } from '../core/i18n.js';
 import { RNG } from '../core/rng.js';
 import { SpatialHash } from '../core/spatial.js';
 import { clamp, lerp, damp, dampAngle, TAU } from '../core/math.js';
@@ -164,8 +165,8 @@ export class Game {
     this.camYaw = mode === 'arena' ? 0 : this.camYaw;
     this._refreshScaling();
     this.audio.setAmbience(1, mode === 'arena' ? 0.8 : 1 + depth * 0.03);
-    if (mode === 'open') this.ui.title(this.dim.name, this.dim.sub, `Depth ${depth + 1}`);
-    else this.ui.title('Rift Sanctum', 'Something vast stirs beyond the rim', `Depth ${depth + 1}`);
+    if (mode === 'open') this.ui.title(L(this.dim.name), L(this.dim.sub), L('Depth {n}', { n: depth + 1 }));
+    else this.ui.title(L('Rift Sanctum'), L('Something vast stirs beyond the rim'), L('Depth {n}', { n: depth + 1 }));
   }
 
   /**
@@ -610,7 +611,7 @@ export class Game {
   bossRoar(e, text, intro = false) {
     this.audio.play('roar');
     this.shake(1);
-    if (intro) this.ui.title(e.name, text, 'BOSS');
+    if (intro) this.ui.title(L(e.name), L(text), 'BOSS');
     else this.announce(text, 'boss');
   }
 
@@ -667,7 +668,7 @@ export class Game {
       this._openOffers(o.kind, o);
     } else if (this.pendingLevels > 0) {
       this.pendingLevels--;
-      this._openOffers('level', { title: `Level ${this.player.level - this.pendingLevels}`, subtitle: 'The abyss offers a gift. Choose one.' });
+      this._openOffers('level', { title: L('Level {n}', { n: this.player.level - this.pendingLevels }), subtitle: L('The abyss offers a gift. Choose one.') });
     }
   }
 
@@ -675,7 +676,7 @@ export class Game {
     const p = this.player;
     const cost = this.world.chestCost(c, p.stats.chestDiscount);
     if (p.shards < cost) {
-      this.announce(`Requires ${cost} shards`, 'warn');
+      this.announce(L('Requires {n} shards', { n: cost }), 'warn');
       this.audio.play('ui');
       return;
     }
@@ -687,7 +688,7 @@ export class Game {
     this.particles.burst(c.x, c.y + 1, c.z, 50, { speed: 7, color: t.glow, shape: SHAPE.SPARK, size: 0.08, life: 1, grav: 5 });
     for (let i = 0; i < 20; i++) this.particles.emit({ x: c.x + (Math.random() - 0.5), y: c.y + 0.5, z: c.z + (Math.random() - 0.5), vy: 6 + Math.random() * 6, life: 1.2, size: 0.25, size1: 0, color: t.glow, shape: SHAPE.GLOW });
     this.shake(0.3);
-    this.offerQueue.push({ kind: 'chest', title: t.name, subtitle: 'Its contents whisper your name.', minTier: t.minTier, luck: t.luck, itemChance: 1.4 });
+    this.offerQueue.push({ kind: 'chest', title: L(t.name), subtitle: L('Its contents whisper your name.'), minTier: t.minTier, luck: t.luck, itemChance: 1.4 });
     this._checkQueues();
   }
 
@@ -700,8 +701,8 @@ export class Game {
     this.particles.burst(e.x, e.y + 3, e.z, 160, { speed: 14, color: this.dim.env.moonCol, shape: SHAPE.SPARK, size: 0.12, life: 1.6, grav: 6 });
     this.particles.burst(e.x, e.y + 3, e.z, 60, { speed: 4, color: this.dim.ash, shape: SHAPE.SMOKE, size: 1.5, size1: 3, life: 2.5, drag: 1.5, additive: false, alpha: 0.6 });
     for (let i = 0; i < 25; i++) this.drop('shard', e.x, e.y + 2, e.z, 2);
-    this.announce(`${e.name} has fallen`, 'boss');
-    this.offerQueue.push({ kind: 'chest', title: 'Relic of the Fallen', subtitle: 'Power torn from a dying god.', minTier: 2, luck: 0.6, itemChance: 1.6 });
+    this.announce(L('{name} has fallen', { name: L(e.name) }), 'boss');
+    this.offerQueue.push({ kind: 'chest', title: L('Relic of the Fallen'), subtitle: L('Power torn from a dying god.'), minTier: 2, luck: 0.6, itemChance: 1.6 });
     this.bossFight = null;
     this.offerDelay = 1.8;
     this.world.openExitPortal(0, 0);
@@ -716,7 +717,7 @@ export class Game {
       p.hp = p.stats.maxHp * 0.5;
       p.invulnT = 2.5;
       this.addHazard({ x: p.x, z: p.z, r: 8, t: 0.01, dmg: 120 * p.stats.dmgMul, kind: 'nova', owner: 'player', color: [1, 0.9, 0.6] });
-      this.announce('Second Breath', 'boss');
+      this.announce(L('Second Breath'), 'boss');
       this.slowmo(1, 0.3);
       return;
     }
@@ -927,13 +928,13 @@ export class Game {
         const type = this.rng.weighted(pool, (e) => e[1])[0];
         this.spawnEnemy(type, Math.cos(a) * r, Math.sin(a) * r, { elite: Math.random() < this.scaling.elite * 0.5 });
       }
-      this.announce('The guardian calls its brood', 'warn');
+      this.announce(L('The guardian calls its brood'), 'warn');
     }
     if (!bf.enraged && (bf.t > 100 || b.hp < b.maxHp * 0.25)) {
       bf.enraged = true;
       b.aggro = (b.aggro || 1) * 1.5;
       b.dmg *= 1.2;
-      this.bossRoar(b, `${b.name} is enraged`);
+      this.bossRoar(b, L('{name} is enraged', { name: L(b.name) }));
       this.R.post_.aberr = 2;
     }
   }
@@ -1136,7 +1137,7 @@ export class Game {
           for (let i = 0; i < 8; i++) this.drop('shard', o.x, o.y + 4, o.z, 2);
           this.shockwave(o.x, o.z, 9, [0.4, 1, 0.7], false);
           const left = W.obelisks.filter((q) => !q.done).length;
-          this.announce(left ? `Obelisk awakened — the Rift draws nearer (${left} remain)` : 'All obelisks awakened — the Rift tears open', 'objective');
+          this.announce(left ? L('Obelisk awakened — the Rift draws nearer ({n} remain)', { n: left }) : L('All obelisks awakened — the Rift tears open'), 'objective');
         }
       } else {
         o.charge = Math.max(0, o.charge - dt / 40);
@@ -1148,7 +1149,7 @@ export class Game {
       if (this.portalTimer <= 0) {
         this.portalOpen = true;
         W.openBossPortal(this.rng);
-        this.announce('A Rift has opened. Reach it before it closes!', 'objective');
+        this.announce(L('A Rift has opened. Reach it before it closes!'), 'objective');
         this.audio.play('portal');
       }
     } else if (W.portal) {
@@ -1161,7 +1162,7 @@ export class Game {
         this.portalOpen = false;
         this.portalTimer = 50;
         this.spawner.hunt(2 + this.depth);
-        this.announce('The Rift collapsed. Something hunts you now...', 'warn');
+        this.announce(L('The Rift collapsed. Something hunts you now...'), 'warn');
       }
     }
   }

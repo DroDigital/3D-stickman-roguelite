@@ -1,6 +1,7 @@
 // Waves: each dimension runs in waves with short breathers between them. Every wave survived (counted across
 // the whole run) raises enemy health, damage, speed, aggression and elite odds via Game._refreshScaling.
 // Every fourth wave is an elite wave; tides are the climax of every third.
+import { L } from '../core/i18n.js';
 import { TAU } from '../core/math.js';
 
 // time (s) into a dimension before each type may appear
@@ -42,8 +43,8 @@ export class Spawner {
     this.spawned = 0;
     this.kind = this.wave % 4 === 0 ? 'elite' : this.wave % 3 === 0 ? 'tide' : 'normal';
     this.quota = Math.round((14 + this.wave * 5 + g.depth * 9 + g.wavesTotal * 1.5) * (this.kind === 'tide' ? 1.35 : 1));
-    const label = this.kind === 'elite' ? 'Elite wave' : this.kind === 'tide' ? 'Tide wave' : 'Wave';
-    g.announce(`${label} ${g.wavesTotal}`, this.kind === 'normal' ? 'objective' : 'tide');
+    const label = this.kind === 'elite' ? L('Elite wave') : this.kind === 'tide' ? L('Tide wave') : L('Wave');
+    g.announce(L('{label} {n}', { label, n: g.wavesTotal }), this.kind === 'normal' ? 'objective' : 'tide');
     g.audio.play('roar', 0.35);
   }
 
@@ -118,7 +119,7 @@ export class Spawner {
         if (Math.hypot(x, z) > g.world.playRadius) continue;
         g.spawnEnemy(this.pickType(), x, z, {});
       }
-      g.announce('A Tide of the Hollow crashes in', 'tide');
+      g.announce(L('A Tide of the Hollow crashes in'), 'tide');
     }
     // a wave ends on its timer, or early once its quota is spawned and mostly cleared
     const alive = g.enemies.filter((e) => e.alive && !e.boss).length;
@@ -126,7 +127,7 @@ export class Spawner {
       this.active = false;
       this.tideDone = false;
       this.breathT = BREATHER;
-      g.announce(`Wave ${g.wavesTotal} survived`, 'loot');
+      g.announce(L('Wave {n} survived', { n: g.wavesTotal }), 'loot');
     }
   }
 

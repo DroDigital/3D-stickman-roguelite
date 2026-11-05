@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Abyssal Stride</title>
-  <meta name="description" content="A hand-drawn anime 3D freeflow-combat roguelite in a cosmic horror world." />
+  <meta name="description" content="A hand-drawn anime 3D roguelite in a cosmic horror world. Four weapon slots, waves, evolutions and up to two players on one screen." />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -53,7 +53,7 @@
       </div>
       <div class="hud-bars">
         <div class="bar hp"><div id="hp-ghost" class="ghost"></div><div id="hp-fill" class="fill"></div><span id="hp-text"></span></div>
-        <div class="bar ult"><div id="ult-fill" class="fill"></div><span id="ult-label">Rend Reality <kbd>R</kbd></span></div>
+        <div class="bar ult"><div id="ult-fill" class="fill"></div><span id="ult-label"><span data-i18n>Rend Reality</span> <kbd>R</kbd></span></div>
         <div class="bar dodge"><div id="dodge-fill" class="fill"></div></div>
         <div id="buffs"></div>
       </div>
@@ -61,12 +61,12 @@
     <div class="hud-tr">
       <div id="depth"></div>
       <div class="stats"><span class="chip" id="chip-shards">◆ <b id="shards">0</b></span><span class="chip">☠ <b id="kills">0</b></span><span class="chip">⧗ <b id="timer">0:00</b></span></div>
-      <div id="wave"><span id="wave-label">Wave 1</span><div class="wave-bar"><i id="wave-fill"></i></div></div>
+      <div id="wave"><span id="wave-label" data-i18n>Wave 1</span><div class="wave-bar"><i id="wave-fill"></i></div></div>
     </div>
     <div id="objective"></div>
     <div id="bossbar" class="hidden"><div id="boss-name"></div><div class="bar boss"><div id="boss-ghost" class="ghost"></div><div id="boss-fill" class="fill"></div><i class="notch"></i></div></div>
     <div id="slots"></div>
-    <div class="xpwrap"><div class="lvl" id="lvl-badge"><span>LV</span><b id="level">1</b></div><div class="bar xp"><div id="xp-fill" class="fill"></div></div></div>
+    <div class="xpwrap"><div class="lvl" id="lvl-badge"><span data-i18n>LV</span><b id="level">1</b></div><div class="bar xp"><div id="xp-fill" class="fill"></div></div></div>
   </div>
   <div id="announce"></div>
   <div id="titlecard"></div>
@@ -76,20 +76,20 @@
     <div class="menu-fx" aria-hidden="true"></div>
     <div class="menu-inner">
       <div class="logo"><i class="logo-slash"></i><span class="logo-a">ABYSSAL</span><span class="logo-b">STRIDE</span></div>
-      <p class="tagline">Descend through the dreams of dead gods. Strike. Counter. Unmake.</p>
+      <p class="tagline" data-i18n>Descend through the dreams of dead gods. Strike. Counter. Unmake.</p>
       <div class="menu-buttons">
-        <button id="btn-start" class="btn big">Begin Descent</button>
-        <button id="btn-tree" class="btn">Ossuary of Echoes <span class="echo-count">◈ <b id="menu-echoes">0</b></span></button>
-        <button id="btn-settings" class="btn ghost">Settings</button>
+        <button id="btn-start" class="btn big" data-i18n>Begin Descent</button>
+        <button id="btn-tree" class="btn"><span data-i18n>Ossuary of Echoes</span> <span class="echo-count">◈ <b id="menu-echoes">0</b></span></button>
+        <button id="btn-settings" class="btn ghost" data-i18n>Settings</button>
       </div>
       <p id="menu-stats" class="muted"></p>
       <div class="controls">
-        <div><kbd>WASD</kbd> Move</div><div><kbd>Shift</kbd> Sprint</div><div><kbd>Space</kbd> Dodge</div>
-        <div><kbd>LMB</kbd> Blade</div><div><kbd>RMB</kbd> Arms (hold)</div><div><kbd>Q</kbd> Arcana</div>
-        <div><kbd>F</kbd> Power</div><div><kbd>R</kbd> Rend Reality</div><div><kbd>E</kbd> Open container</div>
-        <div><kbd>Tab</kbd>/<kbd>MMB</kbd> Lock on</div><div><kbd>Wheel</kbd>/flick Switch target</div><div><kbd>Esc</kbd> Pause</div>
+        <div><kbd>WASD</kbd> <span data-i18n>Move</span></div><div><kbd>Shift</kbd> <span data-i18n>Sprint</span></div><div><kbd>Space</kbd> <span data-i18n>Dodge</span></div>
+        <div><kbd>LMB</kbd> <span data-i18n>Blade</span></div><div><kbd>RMB</kbd> <span data-i18n>Arms (hold)</span></div><div><kbd>Q</kbd> <span data-i18n>Arcana</span></div>
+        <div><kbd>F</kbd> <span data-i18n>Power</span></div><div><kbd>R</kbd> <span data-i18n>Rend Reality</span></div><div><kbd>E</kbd> <span data-i18n>Open container</span></div>
+        <div><kbd>Tab</kbd>/<kbd>MMB</kbd> <span data-i18n>Lock on</span></div><div><kbd>Wheel</kbd>/<span data-i18n>flick</span> <span data-i18n>Switch target</span></div><div><kbd>Esc</kbd> <span data-i18n>Pause</span></div>
       </div>
-      <p class="muted small">Gamepad supported. Four slots, four weapons: level them up, and pair the marked combinations to evolve them.</p>
+      <p class="muted small" data-i18n>Gamepad supported. Four slots, four weapons: level them up, and pair the marked combinations to evolve them.</p>
     </div>
   </div>
 
@@ -99,60 +99,67 @@
   <!-- Pause -->
   <div id="pause" class="screen hidden">
     <div class="panel">
-      <h2>Paused</h2>
-      <button id="btn-resume" class="btn big">Resume</button>
-      <button id="btn-pause-settings" class="btn">Settings</button>
-      <button id="btn-abandon" class="btn ghost danger">Abandon Run</button>
+      <h2 data-i18n>Paused</h2>
+      <button id="btn-resume" class="btn big" data-i18n>Resume</button>
+      <button id="btn-pause-settings" class="btn" data-i18n>Settings</button>
+      <button id="btn-abandon" class="btn ghost danger" data-i18n>Abandon Run</button>
     </div>
   </div>
 
   <!-- Settings -->
   <div id="settings" class="screen hidden">
     <div class="panel">
-      <h2>Settings</h2>
-      <label>Render resolution
+      <h2 data-i18n>Settings</h2>
+      <label><span data-i18n>Language</span>
+        <select id="set-lang">
+          <option value="en">English</option>
+          <option value="de">Deutsch</option>
+          <option value="es">Español</option>
+        </select>
+      </label>
+      <label><span data-i18n>Render resolution</span>
         <select id="set-quality">
-          <option value="300">Crunchy (300p)</option>
-          <option value="432">Retro (432p)</option>
-          <option value="600">Balanced (600p)</option>
-          <option value="0">Native</option>
+          <option value="300" data-i18n>Crunchy (300p)</option>
+          <option value="432" data-i18n>Retro (432p)</option>
+          <option value="600" data-i18n>Balanced (600p)</option>
+          <option value="0" data-i18n>Native</option>
         </select>
       </label>
-      <label>Art style
+      <label><span data-i18n>Art style</span>
         <select id="set-style">
-          <option value="requiem">Ink Requiem (default)</option>
-          <optgroup label="Other packs">
-            <option value="sutra">Black Sutra</option>
-            <option value="lantern">Paper Lantern</option>
-            <option value="retro">Retro low-poly (original)</option>
+          <option value="requiem" data-i18n>Ink Requiem (default)</option>
+          <optgroup label="Other packs" data-i18n-label>
+            <option value="sutra" data-i18n>Black Sutra</option>
+            <option value="lantern" data-i18n>Paper Lantern</option>
+            <option value="retro" data-i18n>Retro low-poly (original)</option>
           </optgroup>
-          <optgroup label="Combinations">
-            <option value="requiem+neon">Ink Requiem + neon lighting</option>
-            <option value="sutra+colour">Black Sutra in colour</option>
-            <option value="requiem+diorama">Ink Requiem on the diorama camera</option>
-            <option value="lantern+perspective">Paper Lantern in true 3D</option>
+          <optgroup label="Combinations" data-i18n-label>
+            <option value="requiem+neon" data-i18n>Ink Requiem + neon lighting</option>
+            <option value="sutra+colour" data-i18n>Black Sutra in colour</option>
+            <option value="requiem+diorama" data-i18n>Ink Requiem on the diorama camera</option>
+            <option value="lantern+perspective" data-i18n>Paper Lantern in true 3D</option>
           </optgroup>
         </select>
       </label>
-      <label>Volume <input id="set-volume" type="range" min="0" max="1" step="0.05" /></label>
-      <label>Mouse sensitivity <input id="set-sens" type="range" min="0.3" max="2.5" step="0.05" /></label>
-      <label>Screen shake <input id="set-shake" type="range" min="0" max="1.5" step="0.05" /></label>
-      <label>Lock-on camera assist <input id="set-lock" type="range" min="0.2" max="2" step="0.05" /></label>
-      <label>Lock-on flick switching <input id="set-flick" type="range" min="0.3" max="2.5" step="0.05" /></label>
-      <button id="settings-close" class="btn">Done</button>
+      <label><span data-i18n>Volume</span> <input id="set-volume" type="range" min="0" max="1" step="0.05" /></label>
+      <label><span data-i18n>Mouse sensitivity</span> <input id="set-sens" type="range" min="0.3" max="2.5" step="0.05" /></label>
+      <label><span data-i18n>Screen shake</span> <input id="set-shake" type="range" min="0" max="1.5" step="0.05" /></label>
+      <label><span data-i18n>Lock-on camera assist</span> <input id="set-lock" type="range" min="0.2" max="2" step="0.05" /></label>
+      <label><span data-i18n>Lock-on flick switching</span> <input id="set-flick" type="range" min="0.3" max="2.5" step="0.05" /></label>
+      <button id="settings-close" class="btn" data-i18n>Done</button>
     </div>
   </div>
 
   <!-- Game over -->
   <div id="gameover" class="screen hidden">
     <div class="panel wide">
-      <h2 class="blood">You Have Been Unmade</h2>
+      <h2 class="blood" data-i18n>You Have Been Unmade</h2>
       <div id="go-stats" class="go-grid"></div>
-      <div class="go-echoes">Echoes gathered <b id="go-echoes">0</b> <span class="muted">· Total ◈ <span id="go-total">0</span></span></div>
+      <div class="go-echoes"><span data-i18n>Echoes gathered</span> <b id="go-echoes">0</b> <span class="muted">· <span data-i18n>Total</span> ◈ <span id="go-total">0</span></span></div>
       <div class="row">
-        <button id="btn-again" class="btn big">Descend Again</button>
-        <button id="btn-go-tree" class="btn">Ossuary of Echoes</button>
-        <button id="btn-go-menu" class="btn ghost">Title</button>
+        <button id="btn-again" class="btn big" data-i18n>Descend Again</button>
+        <button id="btn-go-tree" class="btn" data-i18n>Ossuary of Echoes</button>
+        <button id="btn-go-menu" class="btn ghost" data-i18n>Title</button>
       </div>
     </div>
   </div>
@@ -161,18 +168,18 @@
   <div id="tree" class="screen hidden">
     <div class="tree-head">
       <div>
-        <h2>Ossuary of Echoes</h2>
-        <p class="muted">Spend echoes on permanent power. Reset refunds everything.</p>
+        <h2 data-i18n>Ossuary of Echoes</h2>
+        <p class="muted" data-i18n>Spend echoes on permanent power. Reset refunds everything.</p>
       </div>
       <div class="tree-side">
         <div class="echo-big">◈ <b id="tree-echoes">0</b></div>
-        <div class="muted small">Invested: <span id="tree-spent">0</span></div>
-        <button id="tree-reset" class="btn ghost danger">Reset All</button>
-        <button id="tree-close" class="btn">Back</button>
+        <div class="muted small"><span data-i18n>Invested</span>: <span id="tree-spent">0</span></div>
+        <button id="tree-reset" class="btn ghost danger" data-i18n>Reset All</button>
+        <button id="tree-close" class="btn" data-i18n>Back</button>
       </div>
     </div>
     <div id="tree-canvas"></div>
-    <div id="tree-detail" class="panel"><p class="muted">Hover a node to inspect it. Click to purchase.</p></div>
+    <div id="tree-detail" class="panel"><p class="muted" data-i18n>Hover a node to inspect it. Click to purchase.</p></div>
   </div>
 
   <div id="fatal" class="screen hidden"></div>

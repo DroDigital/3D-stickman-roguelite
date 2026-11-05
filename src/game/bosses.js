@@ -1,4 +1,5 @@
 // Boss encounters. Each boss is an Enemy-compatible type definition with phases and bespoke attacks.
+import { L } from '../core/i18n.js';
 import { Topology } from './rig.js';
 import { HumanoidAnimator, humanoidTopology, CLIPS, STANCE, J } from './humanoid.js';
 import { PRIM } from '../gfx/renderer.js';
@@ -34,7 +35,7 @@ const shepherd = {
   think(e, dt, game) {
     if (!e.phase2 && e.hp < e.maxHp * 0.5) {
       e.phase2 = true;
-      game.bossRoar(e, 'The Shepherd tears off its mask of bark');
+      game.bossRoar(e, L('The Shepherd tears off its mask of bark'));
       e.speed *= 1.25;
     }
     if (e.state !== 'chase') { e.mvx = e.mvz = 0; return; }
@@ -188,7 +189,7 @@ const leviathan = {
   think(e, dt, game) {
     const W = game.world;
     const p = game.player;
-    if (!e.phase2 && e.hp < e.maxHp * 0.5) { e.phase2 = true; game.bossRoar(e, 'The Tidewyrm\'s choir rises to a scream'); }
+    if (!e.phase2 && e.hp < e.maxHp * 0.5) { e.phase2 = true; game.bossRoar(e, L("The Tidewyrm's choir rises to a scream")); }
     e.modeT -= dt;
     e.mvx = e.mvz = 0;
     const ground = W.height(e.hx, e.hz);
@@ -373,7 +374,7 @@ const oculus = {
   },
   think(e, dt, game) {
     const p = game.player;
-    if (!e.phase2 && e.hp < e.maxHp * 0.5) { e.phase2 = true; game.bossRoar(e, 'The Oculus splits its gaze'); }
+    if (!e.phase2 && e.hp < e.maxHp * 0.5) { e.phase2 = true; game.bossRoar(e, L('The Oculus splits its gaze')); }
     if (e.burstWaves > 0) {
       e.burstT -= dt;
       if (e.burstT <= 0) {
