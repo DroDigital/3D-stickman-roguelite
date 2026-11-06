@@ -134,7 +134,7 @@ export class Player {
     this.stateT = 0.4;
     this.dodgeDir = [dx, dz];
     if (!back) this.yaw = Math.atan2(dx, dz);
-    this.anim.play(back ? CLIPS.backflip : CLIPS.dodge, (back ? CLIPS.backflip.dur : CLIPS.dodge.dur) / 0.4);
+    this.anim.play(back ? CLIPS.backflip : CLIPS.dodge, (back ? CLIPS.backflip.dur : CLIPS.dodge.dur) / 0.4, 0.05);
     this.dodgeCd = this.stats.dodgeCd;
     this.game.audio.play('dodge');
     this.game.onDodge(this);
@@ -148,7 +148,7 @@ export class Player {
     this.stateT = dur;
     this.dashV = [(dx / l) * (dist / dur), (dz / l) * (dist / dur)];
     this.yaw = Math.atan2(dx, dz);
-    this.anim.play(CLIPS.dodge, CLIPS.dodge.dur / dur);
+    this.anim.play(CLIPS.dodge, CLIPS.dodge.dur / dur, 0.05);
   }
 
   /** Brief casting gesture for Arcana and Power (doesn't interrupt a dash or dodge). */
@@ -186,7 +186,7 @@ export class Player {
     if (this.state === 'free' || this.state === 'attack' || this.state === 'cast') {
       this.state = 'hurt';
       this.stateT = 0.28;
-      this.anim.play(CLIPS.hit, 1);
+      this.anim.play(CLIPS.hit, 1, 0.03);
     }
     this.anim.hitReact(1.2, Math.random() - 0.5);
   }
@@ -228,11 +228,19 @@ export class Player {
     const attackDone = this.state === 'attack' && this.hitDone >= hits.length && this.anim.progress > (hits.length ? hits[hits.length - 1] : 0.5) + 0.08;
     const canAct = this.state === 'free' || this.state === 'cast' && this.stateT < 0.12 || attackDone || this.state === 'hurt' && this.stateT < 0.08;
     const canDodge = this.state !== 'dodge' && this.state !== 'ult' && this.state !== 'dash';
-    if (input.consume('dodge') && canDodge) this.tryDodge(mx, mz);
+    // a dodge pressed before it can fire waits for that moment: it is held through the cooldown and the dodge itself
+    const dodgeReady = canDodge && this.dodgeCd <= 0;
+    if (input.peek('dodge') && !dodgeReady) input.hold('dodge', (Math.max(this.dodgeCd, this.stateT, 0) + 0.05) / Math.max(0.05, g.timeScale || 1));
+    if (input.peek('dodge') && dodgeReady) { input.consume('dodge'); this.tryDodge(mx, mz); }
     else if (input.peek('ultimate') && canAct && this.ult >= 1) { input.consume('ultimate'); this.tryUltimate(); }
     else if (canAct && (input.peek('attack') || input.held('attack') && this.state !== 'attack')) { input.consume('attack'); this.tryAttack(); }
-    if (input.peek('magic') && this.state !== 'ult') { input.consume('magic'); this.loadout.trigger('magic'); }
-    if (input.peek('power') && this.state !== 'ult') { input.consume('power'); this.loadout.trigger('power'); }
+    // spells: a press made up to 0.3 s before its spell is ready is kept and fires the moment it can
+    for (const key of ['magic', 'power']) {
+      if (!input.peek(key) || this.state === 'ult') continue;
+      const left = this.loadout.cooldown(key);
+      if (left <= 0) { input.consume(key); this.loadout.trigger(key); }
+      else if (left <= 0.3) input.hold(key, left / Math.max(0.05, g.timeScale || 1) + 0.05);
+    }
     // Arms fire while held; sprinting, dodging and dashing hold fire
     const canFire = this.alive && this.state !== 'dodge' && this.state !== 'dash' && this.state !== 'ult' && !this.sprinting;
     this.loadout.update(dt, input, canFire);

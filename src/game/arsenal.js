@@ -737,6 +737,12 @@ export class Loadout {
     return m;
   }
 
+  /** Seconds until an Arcana or Power cast can go off: 0 when ready, Infinity for an empty slot. */
+  cooldown(slot) {
+    const s = this.slots[slot];
+    return s ? Math.max(0, s.cd) : Infinity;
+  }
+
   /** Arcana and Power: press to cast when off cooldown. Returns true when cast. */
   trigger(slot) {
     const s = this.slots[slot];

@@ -1,6 +1,9 @@
 // Keyboard / mouse / gamepad input with edge-triggered "pressed" queries and input buffering.
 
 const BUFFER_TIME = 0.22;
+// Presses worth a longer window: an attack made a beat early, and a spell pressed just before it is ready.
+// A dodge is held through its cooldown instead (see hold()).
+const BUFFER_TIMES = { attack: 0.3, magic: 0.3, power: 0.3 };
 
 export class Input {
   constructor(canvas) {
@@ -93,12 +96,12 @@ export class Input {
   _press(code) {
     this.down.add(code);
     const acts = this.codeToActions.get(code);
-    if (acts) for (const a of acts) this.pressedAt.set(a, BUFFER_TIME);
+    if (acts) for (const a of acts) this.pressedAt.set(a, BUFFER_TIMES[a] ?? BUFFER_TIME);
     this.usingPad = false;
   }
 
   _pressAction(a) {
-    this.pressedAt.set(a, BUFFER_TIME);
+    this.pressedAt.set(a, BUFFER_TIMES[a] ?? BUFFER_TIME);
     this.usingPad = true;
   }
 
@@ -118,6 +121,11 @@ export class Input {
   }
 
   peek(action) { return this.pressedAt.has(action); }
+
+  /** Set the remaining window of a buffered press to `seconds` (real time), e.g. for as long as its cooldown runs. */
+  hold(action, seconds) {
+    if (this.pressedAt.has(action)) this.pressedAt.set(action, seconds);
+  }
 
   moveAxis(out) {
     let x = 0, y = 0;
