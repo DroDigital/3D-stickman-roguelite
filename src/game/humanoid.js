@@ -249,6 +249,8 @@ export class HumanoidAnimator {
     this.pose = makePose();
     this.loco = makePose();
     this.act = makePose();
+    this.inFrom = makePose(); // the pose the current clip eases in from
+    this.inT = 0; this.inDur = 0;
     this.phase = 0;
     this.clip = null;
     this.clipT = 0;
@@ -270,7 +272,14 @@ export class HumanoidAnimator {
     this.lookYaw = 0;
   }
 
-  play(clip, speed = 1) {
+  /**
+   * Start an action clip. The body eases from the pose it is already in into the clip over `blendIn` seconds,
+   * so a cut that starts while moving doesn't snap the arms and torso into the stance.
+   */
+  play(clip, speed = 1, blendIn = 0.07) {
+    copyPose(this.inFrom, this.pose);
+    this.inT = 0;
+    this.inDur = blendIn;
     this.clip = clip;
     this.clipT = 0;
     this.clipSpeed = speed;
@@ -379,8 +388,11 @@ export class HumanoidAnimator {
     const wantW = this.clip ? 1 : 0;
     this.weight += (wantW - this.weight) * Math.min(1, dt * (this.clip ? 40 : 14));
     const P = this.pose;
-    if (this.clip) copyPose(P, this.act);
-    else blendPose(P, L, this.act, this.weight);
+    if (this.clip) {
+      this.inT += dt;
+      if (this.inT < this.inDur) blendPose(P, this.inFrom, this.act, smoothstep(clamp(this.inT / this.inDur, 0, 1)));
+      else copyPose(P, this.act);
+    } else blendPose(P, L, this.act, this.weight);
     P.lean += this.leanSpring + this.hitLean;
     P.side += this.sideSpring;
     P.twist += this.hitTwist;

@@ -598,6 +598,9 @@ export class Game {
   // ================================================================== fx hooks
   onDodge(p) {
     this.particles.burst(p.x, p.y + 0.2, p.z, 10, { speed: 3, color: this.dim.ash, shape: SHAPE.SMOKE, size: 0.4, size1: 0.8, life: 0.6, drag: 3, additive: false, alpha: 0.4 });
+    // the push-off: a dust ring kicked out from the feet, and a breath of speed through the lens
+    this.particles.emit({ x: p.x, y: p.y + 0.08, z: p.z, life: 0.32, size: 0.2, size1: 1.4, color: this.dim.ash, shape: SHAPE.RING, alpha: 0.55, additive: false });
+    this.fovKick = Math.max(this.fovKick, 0.03);
   }
 
   onDestructibleBroken(d) {
@@ -800,6 +803,7 @@ export class Game {
     if (this.hitstopT > 0) { this.hitstopT -= rawDt; ts = Math.min(ts, 0.06); }
     const dt = rawDt * ts;
     this.simDt = dt;
+    this.timeScale = ts;
 
     if (this.state === 'dying') {
       this.dyingT -= rawDt;

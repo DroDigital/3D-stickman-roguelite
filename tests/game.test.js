@@ -5,7 +5,7 @@ import { RARITY, rollRarity, PLAYER_BASE } from '../src/game/config.js';
 import { rollOffers, applyOffer, UPGRADES } from '../src/game/upgrades.js';
 import { Meta, SKILLS, SKILL_BY_ID, echoesForRun } from '../src/game/meta.js';
 import { makeWeapon, WEAPONS } from '../src/game/weapons.js';
-import { solveHumanoid, makePose, STANCE, CLIPS, sampleClip, J } from '../src/game/humanoid.js';
+import { solveHumanoid, makePose, STANCE, CLIPS, sampleClip, J, HumanoidAnimator, tickAnimClock } from '../src/game/humanoid.js';
 import { World } from '../src/game/world.js';
 import { DIMENSIONS } from '../src/game/dimensions.js';
 import { Legs } from '../src/game/legs.js';
@@ -197,6 +197,34 @@ test('action clips sample smoothly within their stance', () => {
 const stubRenderer = () => ({
   setTerrain() {}, clearStatic() {}, uploadStatic() {}, hideStatic() {},
   staticTRS: (kind) => ({ kind, index: 0 }), staticSeg: () => ({ kind: 2, index: 0 }),
+});
+
+test('an action clip eases in from the pose the body is already in, so a cut never pops', () => {
+  // with a fixed 60 Hz step, the first frame of a cut should move the body far less when it blends in
+  const firstFrameJump = (blendIn) => {
+    const a = new HumanoidAnimator(1);
+    const ctx = { fwdSpeed: 7, sideSpeed: 0, accF: 0, accS: 0, combat: 1, x: 0, y: 0, z: 0, yaw: 0 };
+    const dt = 1 / 60;
+    for (let i = 0; i < 90; i++) { tickAnimClock(dt); a.update(dt, ctx); }
+    const before = Float32Array.from(a.pts);
+    a.play(CLIPS.slashR, 1, blendIn);
+    tickAnimClock(dt);
+    a.update(dt, ctx);
+    let jump = 0;
+    for (let i = 0; i < before.length; i++) jump = Math.max(jump, Math.abs(a.pts[i] - before[i]));
+    return jump;
+  };
+  const snapped = firstFrameJump(0), eased = firstFrameJump(0.07);
+  assert.ok(eased < snapped * 0.4, `blend-in should cut the first-frame jump: ${eased.toFixed(4)} vs ${snapped.toFixed(4)}`);
+});
+
+test('a spell reports how long its cooldown has left, so a press can wait for it', () => {
+  const p = fakePlayer();
+  p.loadout.equip('thunder', 1);
+  assert.equal(p.loadout.cooldown('magic'), 0);
+  p.loadout.slots.magic.cd = 0.4;
+  assert.equal(p.loadout.cooldown('magic'), 0.4);
+  assert.equal(p.loadout.cooldown('power'), Infinity, 'an empty slot never comes ready');
 });
 
 test('world height matches the generated terrain mesh and stays bounded', () => {
