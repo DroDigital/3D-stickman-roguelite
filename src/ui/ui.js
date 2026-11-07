@@ -604,7 +604,7 @@ export class UI {
     this.updateHud(g);
     this._pollPad(1 / 60);
     this.hudEl.classList.toggle('wiping', !!g.transition);
-    if (g.state !== 'title') (this.minimal ? this._drawWorldUiMinimal(ctx, g, W, H) : this._drawWorldUi(ctx, g, W, H));
+    if (this.minimal ? g.state === 'play' || g.state === 'dying' : g.state !== 'title') (this.minimal ? this._drawWorldUiMinimal(ctx, g, W, H) : this._drawWorldUi(ctx, g, W, H));
     if (g.transition && !this.minimal) this._wipe(ctx, g, W, H);
   }
 

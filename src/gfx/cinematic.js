@@ -112,7 +112,7 @@ vec3 shade(vec3 P, vec3 N, vec3 V, vec3 albedo, float rough, float metal, float 
     if (att <= 0.0) continue;
     vec3 Ld = Lv / max(d, 1e-4);
     float pnl = dot(N, Ld);
-    vec3 lc = u_lightCol[i].rgb * u_lightCol[i].a * att * 2.4;
+    vec3 lc = u_lightCol[i].rgb * min(u_lightCol[i].a, 3.0) * att * 1.3;
     if (pnl > 0.0) {
       vec3 H = normalize(Ld + V);
       float nh = max(dot(N, H), 0.0), vh = max(dot(V, H), 0.0);
@@ -595,7 +595,8 @@ void main(){
   }
   if (sh == 5) {
     // lit smoke: ambient + a hint of whatever colour it was given
-    col = mix(col, col * 0.4 + u_ambient * 1.6, 0.5) * (0.65 + 0.35 * a);
+    col = mix(col, col * 0.4 + u_ambient * 1.2, 0.5) * (0.6 + 0.3 * a);
+    alpha *= 0.75;
     // keep fighters readable through it
     float fd = length(gl_FragCoord.xy - u_focus.xy) / max(u_focus.z, 1.0);
     alpha *= mix(0.4, 1.0, smoothstep(0.25, 1.0, fd));
@@ -772,7 +773,7 @@ void main(){
       float ld2 = dot(lv, lv);
       float r2 = u_lightPos[j].w * u_lightPos[j].w;
       if (ld2 > r2) continue;
-      inS += u_lightCol[j].rgb * u_lightCol[j].a * (1.0 - ld2 / r2) / (ld2 * 0.6 + 1.0) * 0.6;
+      inS += u_lightCol[j].rgb * min(u_lightCol[j].a, 3.0) * (1.0 - ld2 / r2) / (ld2 * 0.6 + 1.0) * 0.25;
     }
     float ext = den * stepL;
     float tr = exp(-ext);

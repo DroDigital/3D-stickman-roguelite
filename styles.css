@@ -617,3 +617,36 @@ body[data-pack='abyssal'] #depth { border-right: 0; font-style: italic; text-tra
 body[data-pack='abyssal'] #wave.rest #wave-label, body[data-pack='abyssal'] #wave-label { background: none; clip-path: none; padding: 0; color: var(--paper2); }
 body[data-pack='abyssal'] .wave-bar i { background: var(--gold); }
 body[data-pack='abyssal'] .bar.ult > .fill, body[data-pack='abyssal'] .bar.xp > .fill { transition: none; }
+/* Ossuary of Echoes in the cinematic pack: a constellation of small engraved sigils */
+body[data-pack='abyssal'] #tree { background: radial-gradient(ellipse at center, #1a1116 0%, #040305 72%); }
+body[data-pack='abyssal'] .tree-head h2 { background: none; box-shadow: none; transform: none; clip-path: none; font-style: normal; font-size: 22px; letter-spacing: 0.4em; padding: 0; text-shadow: var(--o3); border: 0; }
+body[data-pack='abyssal'] .tree-head p { font-family: var(--body); font-style: italic; font-weight: 500; color: var(--paper2); text-shadow: var(--o2); }
+body[data-pack='abyssal'] .echo-big { clip-path: none; background: none; color: var(--gold); padding: 0; font-size: 26px; text-shadow: 0 0 18px rgba(201, 164, 90, 0.4); }
+body[data-pack='abyssal'] #tree-canvas line { stroke: rgba(201, 164, 90, 0.12); stroke-width: 1; }
+body[data-pack='abyssal'] #tree-canvas line.avail { stroke: rgba(201, 164, 90, 0.4); stroke-dasharray: 3 5; animation: none; }
+body[data-pack='abyssal'] #tree-canvas line.lit { stroke: var(--gold); stroke-width: 1.5; filter: drop-shadow(0 0 4px var(--gold)); }
+body[data-pack='abyssal'] .node { width: 44px; height: 44px; border: 1px solid rgba(201, 164, 90, 0.35); background: radial-gradient(circle at 50% 35%, #2a2226, #0b090c); box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.6); color: var(--paper2); transition: transform 0.2s, box-shadow 0.3s; }
+body[data-pack='abyssal'] .node:hover, body[data-pack='abyssal'] .node:focus-visible { transform: translate(-50%, -50%) scale(1.15); outline: none; box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.6), 0 0 18px rgba(201, 164, 90, 0.5); }
+body[data-pack='abyssal'] .node-name { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 4px; width: 92px; font-size: 8.5px; letter-spacing: 0.12em; color: var(--paper2); text-shadow: var(--o2); }
+body[data-pack='abyssal'] .node-rank { font-size: 11px; color: var(--paper2); margin: 0; }
+body[data-pack='abyssal'] .node.locked { background: #070608; background-image: none; border-color: rgba(255, 255, 255, 0.06); color: var(--muted); }
+body[data-pack='abyssal'] .node.locked .node-name { opacity: 0.5; }
+body[data-pack='abyssal'] .node.can { animation: abyssPulse 1.8s ease-in-out infinite; border-color: var(--gold); }
+body[data-pack='abyssal'] .node.owned { color: #fff; text-shadow: none; border-color: var(--gold); }
+body[data-pack='abyssal'] .node.owned .node-rank { color: var(--gold); }
+body[data-pack='abyssal'] .node.owned.b-body { background: radial-gradient(circle at 50% 35%, #7a1424, #2a0610); }
+body[data-pack='abyssal'] .node.owned.b-blade { background: radial-gradient(circle at 50% 35%, #7a4a14, #2a1806); }
+body[data-pack='abyssal'] .node.owned.b-mind { background: radial-gradient(circle at 50% 35%, #3e2a7a, #140c2a); }
+body[data-pack='abyssal'] .node.owned.b-rift { background: radial-gradient(circle at 50% 35%, #145a4c, #061e1a); }
+body[data-pack='abyssal'] .node.owned.b-core { background: radial-gradient(circle at 50% 35%, #3a3034, #0b090c); }
+body[data-pack='abyssal'] .node.maxed { box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.6), 0 0 0 4px var(--gold), 0 0 16px rgba(201, 164, 90, 0.5); }
+body[data-pack='abyssal'] .branch-label { transform: translate(-50%, -50%); background: none; border: 0; box-shadow: none; font-size: 11px; letter-spacing: 0.6em; color: var(--gold); text-shadow: var(--o2); }
+body[data-pack='abyssal'] #tree-detail h3 { font-family: var(--display); font-style: normal; letter-spacing: 0.2em; font-size: 15px; color: var(--paper); }
+body[data-pack='abyssal'] #tree-detail p { font-family: var(--body); font-weight: 500; font-size: 15px; color: var(--paper2); }
+body[data-pack='abyssal'] #tree-detail .cost.ok { color: var(--gold); }
+body[data-pack='abyssal'] .card { --tilt: 0deg !important; animation-name: abyssPanel; animation-duration: 0.45s; animation-timing-function: ease; }
+body[data-pack='abyssal'] .offers-head h2 { animation: abyssFade 0.8s ease backwards; }
+body[data-pack='abyssal'] .card:hover, body[data-pack='abyssal'] .card:focus-visible { transform: translateY(-10px); }
+body[data-pack='abyssal'] .card::before { display: none; }
+body[data-pack='abyssal'] .card-slot { background: none; color: var(--gold); transform: none; box-shadow: none; border: 0; top: 60px; left: 0; right: 0; text-align: center; font-family: var(--display); font-size: 9px; letter-spacing: 0.3em; text-shadow: var(--o2); }
+body[data-pack='abyssal'] .card-lv { font-family: var(--display); font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; color: #e06070; }
