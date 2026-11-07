@@ -5,6 +5,7 @@
 // so hands and feet land exactly where gameplay put them. Fingers follow the hand, curled into a grip.
 
 const MAX_CHARS = 96;
+const INST_BYTES = 36; // per-character instance record: row, rgb + emissive, material (9 floats)
 
 // ---- tiny column-major mat4 helpers (bind-time only; the per-frame path writes straight into the texture data)
 function m4() { return new Float32Array(16); }
@@ -160,12 +161,19 @@ export class Mannequin {
       mk(new Float32Array(bin, p.nrm, p.count * 3), 1, 3, gl.FLOAT);
       mk(new Uint8Array(bin, p.jnt, p.count * 4), 2, 4, gl.UNSIGNED_BYTE);
       mk(new Float32Array(bin, p.wgt, p.count * 4), 3, 4, gl.FLOAT);
-      for (let i = 4; i < 9; i++) gl.disableVertexAttribArray(i);
+      // one instance record per character: bone row, colour + emissive, material (see cinematic.js SKIN_HEAD)
+      const inst = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, inst);
+      gl.bufferData(gl.ARRAY_BUFFER, MAX_CHARS * INST_BYTES, gl.DYNAMIC_DRAW);
+      gl.enableVertexAttribArray(4); gl.vertexAttribPointer(4, 1, gl.FLOAT, false, INST_BYTES, 0); gl.vertexAttribDivisor(4, 1);
+      gl.enableVertexAttribArray(5); gl.vertexAttribPointer(5, 4, gl.FLOAT, false, INST_BYTES, 4); gl.vertexAttribDivisor(5, 1);
+      gl.enableVertexAttribArray(6); gl.vertexAttribPointer(6, 4, gl.FLOAT, false, INST_BYTES, 20); gl.vertexAttribDivisor(6, 1);
+      gl.disableVertexAttribArray(7); gl.disableVertexAttribArray(8);
       const ib = gl.createBuffer();
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib);
       gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(bin, p.idx, p.indices), gl.STATIC_DRAW);
       gl.bindVertexArray(null);
-      return { vao, count: p.indices, joints: p.material === 'M_Joints' };
+      return { vao, inst, data: new Float32Array(MAX_CHARS * 9), count: p.indices, joints: p.material === 'M_Joints' };
     });
     this.texW = this.nJ * 4;
     this.data = new Float32Array(this.texW * MAX_CHARS * 4);
@@ -190,6 +198,18 @@ export class Mannequin {
     const row = this.queue.length;
     this._pose(sk, look, row);
     this.queue.push({ row, look });
+    // the per-character record for each material's draw
+    for (const part of this.parts) {
+      const d = part.data, o = row * 9, j = part.joints;
+      const c = (j ? look.joint : look.main) || [1, 1, 1];
+      const m = j ? look.jointMat : look.mainMat;
+      d[o] = row; d[o + 1] = c[0]; d[o + 2] = c[1]; d[o + 3] = c[2];
+      d[o + 4] = (j ? look.jointEmis : look.mainEmis) || 0;
+      d[o + 5] = m ?? -1;
+      d[o + 6] = (j ? look.jointRough : look.rough) ?? -1;
+      d[o + 7] = (j ? look.jointMetal : look.metal) ?? -1;
+      d[o + 8] = look.texScale || 2.2;
+    }
     return true;
   }
 
@@ -292,22 +312,22 @@ export class Mannequin {
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.texW, n, gl.RGBA, gl.FLOAT, this.data, 0);
+    for (const part of this.parts) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, part.inst);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, part.data, 0, n * 9);
+    }
   }
 
-  /** Draw every queued character with program `p` (lit or shadow). `perPart(p, look, part)` sets material uniforms. */
-  draw(p, unit, perPart) {
-    const gl = this.gl;
-    if (!this.queue.length) return;
+  /** Draw every queued character: one instanced draw per material, for lit and shadow programs alike. */
+  draw(p, unit) {
+    const gl = this.gl, n = this.queue.length;
+    if (!n) return;
     gl.activeTexture(gl.TEXTURE0 + unit);
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
     gl.uniform1i(p.u.u_bones, unit);
-    for (const q of this.queue) {
-      gl.uniform1f(p.u.u_row, q.row);
-      for (const part of this.parts) {
-        if (perPart) perPart(p, q.look, part);
-        gl.bindVertexArray(part.vao);
-        gl.drawElements(gl.TRIANGLES, part.count, gl.UNSIGNED_SHORT, 0);
-      }
+    for (const part of this.parts) {
+      gl.bindVertexArray(part.vao);
+      gl.drawElementsInstanced(gl.TRIANGLES, part.count, gl.UNSIGNED_SHORT, 0, n);
     }
     gl.bindVertexArray(null);
   }

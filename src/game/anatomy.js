@@ -61,10 +61,10 @@ export const BODIES = {
 export const CASTS = {
   requiem: {},
   // Abyssal Cinematic: the sourced Quaternius mannequin skinned onto the skeleton (`mq`), dressed with PBR cloth,
-  // bone and forged-iron materials. Joint rings glow on the hero (weapon colour) and the elites.
+  // bone and forged-iron materials. The hero's body is dark iron; only its eyes take the weapon's colour.
   abyssal: {
     hero: { hairStyle: 'hood', top: [0.07, 0.065, 0.08], top2: [0.42, 0.05, 0.07], tails: 4, tailLen: 7, tailCol: [0.3, 0.035, 0.05], eyes: 'glow',
-      mq: { main: [0.13, 0.125, 0.14], mainMat: MAT.IRON, rough: 0.42, metal: 0.85, joint: null, jointGlow: 1.8, jointMat: MAT.NONE, jointRough: 0.3, jointMetal: 0, girth: 1.02, texScale: 2.5 } },
+      mq: { main: [0.13, 0.125, 0.14], mainMat: MAT.IRON, rough: 0.42, metal: 0.85, joint: [0.10, 0.095, 0.11], jointMat: MAT.IRON, jointRough: 0.5, jointMetal: 0.6, girth: 1.02, texScale: 2.5 } },
     husk: { tails: 2, tailCol: [0.22, 0.18, 0.16], eyes: 'glow',
       mq: { main: [0.74, 0.7, 0.62], mainMat: MAT.BONE, rough: 0.55, joint: [0.12, 0.05, 0.05], jointMat: MAT.FLESH, girth: 0.86, texScale: 3, head: 0.95 } },
     brute: { tails: 2, tailCol: [0.2, 0.14, 0.12], eyes: 'glow', horns: true,

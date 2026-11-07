@@ -104,6 +104,11 @@ export class UI {
       mu.value = String(st.music ?? 0.7);
       mu.oninput = () => { st.music = Number(mu.value); this.meta.save(); };
     }
+    const ad = $('#set-adapt');
+    if (ad) {
+      ad.checked = st.adaptive !== false;
+      ad.onchange = () => { st.adaptive = ad.checked; game.R.adaptive = ad.checked; if (game.R.cine && game.R.cine.ok) game.R.cine.setAdaptive(ad.checked); this.meta.save(); };
+    }
     const sty = $('#set-style');
     sty.value = game.style ? game.style.id : 'cinematic';
     sty.onchange = () => { st.style = sty.value; st.styleChosen = true; game.setStyle(st.style); this.meta.save(); };
@@ -112,7 +117,10 @@ export class UI {
     sh.oninput = () => { st.shake = Number(sh.value); this.meta.save(); };
     const rs = $('#settings-reset');
     if (rs) rs.onclick = () => {
-      Object.assign(st, { graphics: 'high', volume: 0.6, music: 0.7, sensitivity: 1, shake: 1, lockAssist: 1, lockFlick: 1 });
+      Object.assign(st, { graphics: 'high', adaptive: true, volume: 0.6, music: 0.7, sensitivity: 1, shake: 1, lockAssist: 1, lockFlick: 1 });
+      game.R.adaptive = true;
+      if (game.R.cine && game.R.cine.ok) game.R.cine.setAdaptive(true);
+      const adReset = $('#set-adapt'); if (adReset) adReset.checked = true;
       this.audio.setVolume(st.volume);
       game.R.gfx = 'high';
       if (game.R.cine && game.R.cine.ok) game.R.cine.setQuality('high');

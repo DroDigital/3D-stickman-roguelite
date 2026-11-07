@@ -581,17 +581,18 @@ export class Renderer {
   _packLights() {
     const L = this.lights, n = L.length / 8;
     const cx = this.camPos[0], cy = this.camPos[1], cz = this.camPos[2];
-    let idx = [];
+    if (!this._score || this._score.length < n) { this._score = new Float32Array(Math.max(64, n)); this._order = new Int32Array(Math.max(64, n)); }
+    const score = this._score, order = this._order;
     for (let i = 0; i < n; i++) {
       const dx = L[i * 8] - cx, dy = L[i * 8 + 1] - cy, dz = L[i * 8 + 2] - cz;
       const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      const score = (L[i * 8 + 7] * L[i * 8 + 3]) / (1 + Math.max(0, d - L[i * 8 + 3]));
-      idx.push([score, i]);
+      score[i] = (L[i * 8 + 7] * L[i * 8 + 3]) / (1 + Math.max(0, d - L[i * 8 + 3]));
+      order[i] = i;
     }
-    if (n > S.MAX_LIGHTS) idx.sort((a, b) => b[0] - a[0]);
+    if (n > S.MAX_LIGHTS) order.subarray(0, n).sort((a, b) => score[b] - score[a]);
     const m = Math.min(n, S.MAX_LIGHTS);
     for (let k = 0; k < m; k++) {
-      const i = idx[k][1];
+      const i = order[k];
       for (let j = 0; j < 4; j++) {
         this.lightPos[k * 4 + j] = L[i * 8 + j];
         this.lightCol[k * 4 + j] = L[i * 8 + 4 + j];
