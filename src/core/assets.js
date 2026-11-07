@@ -54,7 +54,7 @@ export function decodeRGBE(px) {
   return out;
 }
 
-/** Order-2 spherical harmonics (9 RGB coefficients, already convolved for Lambert irradiance) of an equirect map. */
+/** Order-2 spherical harmonics of an equirect map, convolved for Lambert: the shader's polynomial gives irradiance / pi. */
 export function shFromEquirect(w, h, data) {
   const sh = new Float64Array(27);
   let wsum = 0;
@@ -76,8 +76,10 @@ export function shFromEquirect(w, h, data) {
   }
   const norm = (4 * Math.PI) / wsum;
   const band = [Math.PI, 2.094395, 2.094395, 2.094395, 0.785398, 0.785398, 0.785398, 0.785398, 0.785398];
+  // fold the basis constants in too, so the shader evaluates a plain polynomial in the normal
+  const Y = [0.282095, 0.488603, 0.488603, 0.488603, 1.092548, 1.092548, 0.315392, 1.092548, 0.546274];
   const out = new Float32Array(27);
-  for (let k = 0; k < 9; k++) for (let c = 0; c < 3; c++) out[k * 3 + c] = sh[k * 3 + c] * norm * band[k] / Math.PI;
+  for (let k = 0; k < 9; k++) for (let c = 0; c < 3; c++) out[k * 3 + c] = sh[k * 3 + c] * norm * band[k] / Math.PI * Y[k];
   return out;
 }
 

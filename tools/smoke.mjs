@@ -1,5 +1,5 @@
 // Headless smoke test: boots the game in Chromium (SwiftShader WebGL2), plays a scripted run and captures screenshots.
-// Usage: node tools/smoke.mjs [outDir]
+// Usage: node tools/smoke.mjs [outDir] [query]   (query defaults to gfx=low so SwiftShader keeps up)
 import { createRequire } from 'node:module';
 import { spawn, execSync } from 'node:child_process';
 import path from 'node:path';
@@ -23,14 +23,16 @@ const server = spawn(process.execPath, [path.join(root, 'server.js'), String(por
 await new Promise((r) => setTimeout(r, 600));
 
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
-const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
+page.setDefaultTimeout(180000);
+const query = process.argv[3] ?? 'gfx=low';
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); else if (m.type() === 'warning' && !/AudioContext/.test(m.text())) console.log('warn:', m.text().slice(0, 300)); });
 
-const shot = async (name) => { await page.screenshot({ path: path.join(outDir, name + '.png') }); console.log('shot', name); };
+const shot = async (name) => { await page.screenshot({ path: path.join(outDir, name + '.png'), timeout: 180000 }); console.log('shot', name); };
 const wait = (ms) => page.waitForTimeout(ms);
-const until = (fn, arg, timeout = 30000) => page.waitForFunction(fn, arg, { timeout, polling: 100 });
+const until = (fn, arg, timeout = 180000) => page.waitForFunction(fn, arg, { timeout, polling: 100 });
 const settled = () => until(() => !window.__game.transition && window.__game.state === 'play');
 const gameTime = (s) => page.evaluate((s) => new Promise((res) => {
   const g = window.__game, t0 = g.time;
@@ -39,8 +41,9 @@ const gameTime = (s) => page.evaluate((s) => new Promise((res) => {
 }), s);
 
 try {
-  await page.goto(`http://localhost:${port}/`);
+  await page.goto(`http://localhost:${port}/?${query}`);
   await until(() => window.__game && window.__game.time > 1.5);
+  await page.evaluate(() => window.__assets);
   await shot('01-title');
 
   await page.click('#btn-tree');
