@@ -8,7 +8,7 @@ A cinematic third-person 3D action roguelite set in a cosmic-horror / dark-fanta
 npm start
 ```
 
-Then open <http://localhost:8080>. Any static file server works, since the game is just `index.html`, ES modules and the `assets/` folder. You need a browser with WebGL2 and float render targets (any current Chrome, Edge, Firefox or Safari). Without float targets the game falls back to the Ink Requiem look.
+Then open <http://localhost:8080>. For a standalone window instead, see [Desktop app](#desktop-app-windows-macos-linux). Any static file server works, since the game is just `index.html`, ES modules and the `assets/` folder. You need a browser with WebGL2 and float render targets (any current Chrome, Edge, Firefox or Safari). Without float targets the game falls back to the Ink Requiem look.
 
 URL options for previews: `?gfx=low|medium|high|ultra` picks the graphics preset, `?style=<id>` picks a pack and `?dim=0..3` starts a run straight in a realm.
 
@@ -21,6 +21,41 @@ npm run smoke
 ```
 
 `npm test` runs the unit tests for the pure game logic (Node 18+). `npm run smoke` runs a headless Chromium playthrough that writes screenshots to `tools/shots/` and needs Playwright (it uses the Low preset by default so software rendering keeps up). `node tools/autoplay.mjs 120` is a soak test: a bot plays the game and logs its progress. `node tools/fetch-assets.mjs` re-downloads and re-converts the sourced assets (see the comment at the top of the file).
+
+## Desktop app (Windows, macOS, Linux)
+
+The launcher runs the game in its own window, with no browser chrome, from the same files as the web build. Saves and settings stay with each install. F11 toggles fullscreen.
+
+**Installers.** `.github/workflows/desktop.yml` builds every platform on its own runner, on each version tag (and on demand), and attaches the results to the release:
+
+| Platform | Files | Notes |
+| --- | --- | --- |
+| Windows 10/11, x64 | `Abyssal Stride Setup …exe` (installer) or the `…portable.exe` (no install) | Unsigned, so SmartScreen may ask: *More info → Run anyway*. |
+| macOS 11+, Apple silicon or Intel | `.dmg` (drag to Applications) or `.zip` | Unsigned: right-click the app and choose *Open* the first time, or run `xattr -dr com.apple.quarantine "/Applications/Abyssal Stride.app"`. |
+| Linux, x64 | `…AppImage` (`chmod +x`, then run) or `…amd64.deb` | The deb adds a menu entry. |
+
+**Run from the source tree** (Node 20 or newer):
+
+```bash
+npm install
+npm run desktop
+```
+
+**Build installers yourself:**
+
+```bash
+npm run dist          # this platform's installers, into dist/
+npm run dist:linux    # AppImage and deb
+npm run dist:win      # NSIS installer and portable exe (best on Windows)
+npm run dist:mac      # DMG and ZIP for Intel and Apple silicon (needs macOS)
+```
+
+Notes:
+- Installers are unsigned. Signing and notarisation need your own certificates; electron-builder reads them from environment variables (see its documentation). `package.json` → `build` holds the configuration.
+- The launcher serves the game from an in-app `app://game` origin, so it needs no server and no network.
+- On Linux, the AppImage runs with the Chromium sandbox disabled, because Ubuntu's AppArmor rules block its setup. The app only loads its own files.
+- `npm run desktop:selftest` loads the game headlessly, saves `tools/shots/desktop-selftest.png` and exits. On a Linux machine with no display, run it under `xvfb-run -a`.
+- Icons come from `tools/make-icons.py` (needs Pillow).
 
 ## Controls
 

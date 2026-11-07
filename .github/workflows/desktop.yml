@@ -1,0 +1,78 @@
+# Builds the desktop launcher on each platform's own runner: AppImage + deb (Linux), NSIS installer + portable exe
+# (Windows) and DMG + ZIP for Intel and Apple silicon (macOS). Runs on version tags and on demand.
+name: Desktop builds
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            builds: --linux AppImage deb
+            selftest: xvfb-run -a --server-args="-screen 0 1280x800x24"
+          - os: windows-latest
+            builds: --win nsis portable
+            selftest: ''
+          - os: macos-latest
+            builds: --mac dmg zip
+            selftest: ''
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Tests
+        run: npm test
+
+      - name: Build installers
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder ${{ matrix.builds }} --publish never
+
+      - name: Self-test the launcher
+        if: matrix.os == 'ubuntu-latest'
+        run: ${{ matrix.selftest }} node tools/desktop-selftest.mjs
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: abyssal-stride-${{ matrix.os }}
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Publish to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

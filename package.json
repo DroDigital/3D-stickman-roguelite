@@ -1,13 +1,102 @@
 {
   "name": "abyssal-stride",
-  "version": "0.1.0",
-  "description": "Retro 3D stickman freeflow-combat roguelite in a cosmic horror world. Pure WebGL2, no engine.",
+  "version": "0.2.0",
+  "description": "Cinematic 3D action roguelite in a cosmic-horror world. Pure WebGL2, no engine, no runtime dependencies.",
   "type": "module",
   "private": true,
   "scripts": {
     "start": "node server.js 8080",
+    "desktop": "electron desktop/main.cjs",
+    "desktop:selftest": "node tools/desktop-selftest.mjs",
+    "dist": "electron-builder --publish never",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
     "test": "node --test tests/*.test.js",
     "smoke": "node tools/smoke.mjs"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "45.2.3",
+    "electron-builder": "26.18.0"
+  },
+  "main": "desktop/main.cjs",
+  "author": "DroDigital",
+  "build": {
+    "appId": "com.drodigital.abyssal-stride",
+    "productName": "Abyssal Stride",
+    "copyright": "Copyright (c) 2026 DroDigital",
+    "electronLanguages": [
+      "en-US"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "desktop/**/*",
+      "src/**/*",
+      "assets/**/*",
+      "index.html",
+      "styles.css",
+      "package.json"
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.role-playing-games",
+      "icon": "desktop/icons/icon.icns",
+      "identity": null,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "icon": "desktop/icons/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Abyssal Stride",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "linux": {
+      "icon": "desktop/icons/icon.png",
+      "category": "Game",
+      "synopsis": "Cinematic cosmic-horror action roguelite",
+      "description": "Descend through the dreams of dead gods: four-slot arsenal combat, procedural realms and a persistent skill tree.",
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "maintainer": "DroDigital",
+      "vendor": "DroDigital"
+    }
+  }
 }
