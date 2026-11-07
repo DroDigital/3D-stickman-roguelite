@@ -196,7 +196,7 @@ test('action clips sample smoothly within their stance', () => {
 
 const stubRenderer = () => ({
   setTerrain() {}, clearStatic() {}, uploadStatic() {}, hideStatic() {},
-  staticTRS: (kind) => ({ kind, index: 0 }), staticSeg: () => ({ kind: 2, index: 0 }),
+  staticTRS: (kind) => ({ kind, index: 0 }), setMat: () => {}, staticSeg: () => ({ kind: 2, index: 0 }),
 });
 
 test('an action clip eases in from the pose the body is already in, so a cut never pops', () => {

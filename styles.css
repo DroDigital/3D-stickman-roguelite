@@ -613,3 +613,7 @@ body[data-pack='abyssal'] select:focus-visible, body[data-pack='abyssal'] input:
 @media (prefers-reduced-motion: reduce) {
   body[data-pack='abyssal'] * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+body[data-pack='abyssal'] #depth { border-right: 0; font-style: italic; text-transform: uppercase; }
+body[data-pack='abyssal'] #wave.rest #wave-label, body[data-pack='abyssal'] #wave-label { background: none; clip-path: none; padding: 0; color: var(--paper2); }
+body[data-pack='abyssal'] .wave-bar i { background: var(--gold); }
+body[data-pack='abyssal'] .bar.ult > .fill, body[data-pack='abyssal'] .bar.xp > .fill { transition: none; }

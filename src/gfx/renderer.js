@@ -608,6 +608,9 @@ export class Renderer {
     if (this.cine.ok) this.cine.attach(assets, texSize);
   }
 
+  /** Weapon ribbon trail (cinematic style only; other looks keep particle trails). */
+  get ribbon() { return this.style.cinematic && this.cine && this.cine.ok ? (pts, c, w, k) => this.cine.ribbon(pts, c, w, k) : null; }
+
   /** Skinned mannequin for character bodies (cinematic style with the model loaded), else null. */
   get mannequin() { return this.style.cinematic && this.cine && this.cine.ok ? this.cine.mannequin : null; }
 

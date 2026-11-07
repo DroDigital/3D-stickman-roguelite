@@ -748,10 +748,10 @@ export class UI {
       this._promptMinimal(ctx, t[0], t[1], g.input.usingPad ? 'LB' : 'E', `Open ${CHEST_TIERS[ch.tier].name}`, `${cost} ◆`, ok, SERIF);
     }
     if (g.state === 'play' && g.player.alive) {
-      if (g.player.ult >= 1) this._captionMinimal(ctx, W / 2, H * 0.74, 'Rend Reality', g.input.usingPad ? 'RT' : 'R', '#e6c57e', SERIF, 0.6 + 0.4 * Math.sin(g.time * 3));
+      if (g.player.ult >= 1) this._captionMinimal(ctx, W / 2, H * 0.8, 'Rend Reality', g.input.usingPad ? 'RT' : 'R', '#e6c57e', SERIF, 0.6 + 0.4 * Math.sin(g.time * 3));
       if (g.timeStopT > 0) this._captionMinimal(ctx, W / 2, H * 0.22, 'Time stands still', '', '#9cc8d8', SERIF, 0.9);
       if (g.lock && g.lock.alive) this._reticleMinimal(ctx, g, g.lock, W, H, SERIF);
-      if (!g.input.locked && !g.input.usingPad) this._captionMinimal(ctx, W / 2, H - 150, 'Click to take control of the camera', '', 'rgba(233,225,210,0.75)', SERIF, 0.8);
+      if (!g.input.locked && !g.input.usingPad) this._captionMinimal(ctx, W / 2, H * 0.62, 'Click to take control of the camera', '', 'rgba(233,225,210,0.75)', SERIF, 0.8);
     }
   }
 

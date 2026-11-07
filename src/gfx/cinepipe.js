@@ -56,6 +56,20 @@ export class CinePipe {
     this.dofP = new P(gl, S.FS_TRI_VS, C.DOF_FS);
     this.compP = new P(gl, S.FS_TRI_VS, C.COMPOSITE_FS);
     this.fxaaP = new P(gl, S.FS_TRI_VS, C.FXAA_FS);
+    this.ribbonP = new P(gl, C.RIBBON_VS, C.RIBBON_FS);
+    // ribbon vertex stream: pos3, rgba4, side1
+    this.ribbonData = new Float32Array(8 * 6000);
+    this.ribbonN = 0;
+    this.ribbonVao = gl.createVertexArray();
+    gl.bindVertexArray(this.ribbonVao);
+    this.ribbonBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.ribbonBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, this.ribbonData.byteLength, gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 32, 0);
+    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 32, 12);
+    gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 32, 28);
+    for (let i = 3; i < 9; i++) gl.disableVertexAttribArray(i);
+    gl.bindVertexArray(null);
     this.quality = C.QUALITY.high;
     this.shadowVP = new Float32Array(16);
     this.lightView = new Float32Array(16);
@@ -548,6 +562,7 @@ export class CinePipe {
     R.alphaQuads.draw();
     gl.uniform1f(qp2.u.u_hdr, 1);
     R.addQuads.draw();
+    this._drawRibbons();
     this._drawPrecip();
     gl.depthMask(true);
     gl.disable(gl.BLEND);
@@ -616,7 +631,7 @@ export class CinePipe {
     gl.uniform1f(p.u.u_dofOn, dofOn ? 1 : 0);
     gl.uniform2f(p.u.u_res, w, h);
     gl.uniform1f(p.u.u_time, R.time);
-    gl.uniform1f(p.u.u_exposure, look.exposure * (pp.exposure ?? 1) * (1 + this.flash * 0.6));
+    gl.uniform1f(p.u.u_exposure, look.exposure * (pp.exposure ?? 1) * (1 + this.flash * 0.25));
     gl.uniform1f(p.u.u_bloomAmt, look.bloom * (1 + (pp.bloomBoost || 0)));
     gl.uniform1f(p.u.u_dirt, look.dirt);
     gl.uniform1f(p.u.u_aberr, pp.aberr);
@@ -669,6 +684,40 @@ export class CinePipe {
     gl.uniform3f(qp.u.u_ambient, look.fogCol[0] * fa + this.keyCol[0] * 0.04, look.fogCol[1] * fa + this.keyCol[1] * 0.04, look.fogCol[2] * fa + this.keyCol[2] * 0.04);
     gl.uniform1f(qp.u.u_time, R.time);
     gl.uniform3fv(qp.u.u_focus, R._focusPx({ w, h }));
+  }
+
+  /** Queue a ribbon: pts = [tipX,tipY,tipZ, baseX,baseY,baseZ, fade] * n (see game/trails.js). */
+  ribbon(pts, color, width = 1, intensity = 1) {
+    const d = this.ribbonData;
+    const n = pts.length / 7;
+    for (let i = 0; i < n - 1; i++) {
+      if (this.ribbonN + 6 > d.length / 8) return;
+      const a = i * 7, b = (i + 1) * 7;
+      // base points pulled toward the tip so the ribbon is a blade-wide band, not the whole arm
+      const v = (o, tip) => {
+        const k = this.ribbonN++ * 8;
+        const s = tip ? 1 : 0;
+        const bx = pts[o + 3] + (pts[o] - pts[o + 3]) * (1 - width), by = pts[o + 4] + (pts[o + 1] - pts[o + 4]) * (1 - width), bz = pts[o + 5] + (pts[o + 2] - pts[o + 5]) * (1 - width);
+        d[k] = tip ? pts[o] : bx; d[k + 1] = tip ? pts[o + 1] : by; d[k + 2] = tip ? pts[o + 2] : bz;
+        d[k + 3] = color[0] * intensity; d[k + 4] = color[1] * intensity; d[k + 5] = color[2] * intensity; d[k + 6] = pts[o + 6]; d[k + 7] = s;
+      };
+      v(a, 0); v(a, 1); v(b, 1);
+      v(a, 0); v(b, 1); v(b, 0);
+    }
+  }
+
+  _drawRibbons() {
+    if (!this.ribbonN) return;
+    const gl = this.gl, R = this.R;
+    const p = this.ribbonP.use();
+    gl.uniformMatrix4fv(p.u.u_vp, false, R.vp);
+    gl.uniform3fv(p.u.u_camPos, R.camPos);
+    gl.uniform1f(p.u.u_fogDen, R.look.density * 0.6);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.ribbonBuf);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.ribbonData, 0, this.ribbonN * 8);
+    gl.bindVertexArray(this.ribbonVao);
+    gl.drawArrays(gl.TRIANGLES, 0, this.ribbonN);
+    this.ribbonN = 0;
   }
 
   _drawPrecip() {

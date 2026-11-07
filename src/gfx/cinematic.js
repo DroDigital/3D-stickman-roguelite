@@ -93,7 +93,7 @@ vec3 shade(vec3 P, vec3 N, vec3 V, vec3 albedo, float rough, float metal, float 
   float sh = shadowAt(P, N, max(nl, 0.0));
   keyShadow = sh;
   vec3 col = vec3(0.0);
-  vec3 kc = u_keyCol * (1.0 + u_flash * 6.0);
+  vec3 kc = u_keyCol * (1.0 + u_flash * 2.5);
   if (nl > 0.0) {
     vec3 H = normalize(L + V);
     float nh = max(dot(N, H), 0.0), vh = max(dot(V, H), 0.0);
@@ -122,10 +122,10 @@ vec3 shade(vec3 P, vec3 N, vec3 V, vec3 albedo, float rough, float metal, float 
     if (trans > 0.0) col += diff * lc * trans * 0.25 * max(-pnl, 0.0);
   }
   // image-based ambient: SH irradiance + prefiltered specular, darkened in occluded crevices
-  vec3 irr = shIrr(N) * u_envTint * u_envInt * (1.0 + u_flash * 3.0);
+  vec3 irr = shIrr(N) * u_envTint * u_envInt * (1.0 + u_flash * 1.5);
   vec2 ab = envBRDF(nv, rough);
   vec3 R = reflect(-V, N);
-  vec3 pref = envSpec(R, rough) * u_envTint * u_envInt * u_envSpec * (1.0 + u_flash * 3.0);
+  vec3 pref = envSpec(R, rough) * u_envTint * u_envInt * u_envSpec * (1.0 + u_flash * 1.5);
   float horizon = clamp(1.0 + dot(R, N), 0.0, 1.0);
   float specOcc = clamp(pow(nv + ao, exp2(-16.0 * a - 1.0)) - 1.0 + ao, 0.0, 1.0);
   col += diff * irr * ao + pref * (f0 * ab.x + ab.y) * specOcc * horizon * horizon * mix(0.55, 1.0, sh);
@@ -180,7 +180,7 @@ out vec3 v_col;
 out float v_emis;
 out vec3 v_lpos;
 out vec3 v_lnrm;
-out vec4 v_mat;
+flat out vec4 v_mat;
 out vec3 v_ax0;
 out vec3 v_ax1;
 out vec3 v_ax2;
@@ -211,7 +211,7 @@ in vec3 v_col;
 in float v_emis;
 in vec3 v_lpos;
 in vec3 v_lnrm;
-in vec4 v_mat;
+flat in vec4 v_mat;
 in vec3 v_ax0;
 in vec3 v_ax1;
 in vec3 v_ax2;
@@ -234,7 +234,7 @@ void main(){
   vec3 N = Ng;
   float rough = 0.62, metal = 0.0, ao = 1.0, trans = 0.0;
   vec3 emis = vec3(0.0);
-  float layer = v_mat.x;
+  float layer = floor(v_mat.x + 0.5);
   float porous = 1.0;
   if (u_terrain > 0.5) {
     // two-layer terrain: ground on flats, rock on slopes, broken up by noise and the occlusion map as height
@@ -244,7 +244,7 @@ void main(){
     Surf r = triSample(u_terrainMat.y, v_wpos, Ng, 0.14);
     float k = smoothstep(0.16, 0.34, slope + (nz - 0.5) * 0.22 + (r.ao - g.ao) * 0.18);
     Surf s; s.albedo = mix(g.albedo, r.albedo, k); s.n = normalize(mix(g.n, r.n, k)); s.rough = mix(g.rough, r.rough, k); s.ao = mix(g.ao, r.ao, k); s.metal = 0.0;
-    vec3 avg = mix(u_matAvg[int(u_terrainMat.x)], u_matAvg[int(u_terrainMat.y)], k);
+    vec3 avg = mix(u_matAvg[int(u_terrainMat.x + 0.5)], u_matAvg[int(u_terrainMat.y + 0.5)], k);
     // the realm palette (vertex colour) tints the photographed detail
     vec3 tinted = s.albedo / max(avg, vec3(0.02)) * base;
     albedo = mix(s.albedo * mix(vec3(1.0), base / max(dot(base, vec3(0.333)), 0.02) * 0.33, 0.6), tinted, u_tintMix) * (0.8 + 0.4 * nz);
@@ -272,7 +272,7 @@ void main(){
     vec3 ln = normalize(v_lnrm);
     float scale = v_mat.w > 0.0 ? v_mat.w : 0.6;
     Surf s = triSample(layer, lp, ln, scale);
-    vec3 avg = u_matAvg[int(layer)];
+    vec3 avg = u_matAvg[int(layer + 0.5)];
     albedo = mix(s.albedo, s.albedo / max(avg, vec3(0.02)) * base, u_tintMix);
     vec3 nObj = s.n;
     N = normalize(v_ax0 * nObj.x + v_ax1 * nObj.y + v_ax2 * nObj.z);
@@ -354,7 +354,7 @@ out vec3 v_col;
 out float v_emis;
 out vec3 v_lpos;
 out vec3 v_lnrm;
-out vec4 v_mat;
+flat out vec4 v_mat;
 out vec3 v_ax0;
 out vec3 v_ax1;
 out vec3 v_ax2;
@@ -757,8 +757,8 @@ void main(){
   float T = 1.0;
   float cosT = dot(rd, u_keyDir);
   float ph = phase(cosT);
-  vec3 keyC = u_keyCol * (1.0 + u_flash * 5.0);
-  vec3 amb = u_fogCol * (1.0 + u_flash * 2.0);
+  vec3 keyC = u_keyCol * (1.0 + u_flash * 2.0);
+  vec3 amb = u_fogCol * (1.0 + u_flash * 1.2);
   for (int i = 0; i < 48; i++) {
     if (i >= N) break;
     float t = (float(i) + jitter) * stepL;
@@ -1096,3 +1096,32 @@ export const QUALITY = {
   high: { scale: 0.9, shadow: 2048, fogSteps: 26, ao: true, fogLights: true, bloomLevels: 6, fxaa: true, foliage: 1.8, precip: 8000, dof: true, texSize: 512 },
   ultra: { scale: 1, shadow: 4096, fogSteps: 36, ao: true, fogLights: true, bloomLevels: 6, fxaa: true, foliage: 2.2, precip: 12000, dof: true, texSize: 512 },
 };
+
+// Weapon ribbon trails: a camera-independent strip between blade tip and base, brightest at the edge.
+export const RIBBON_VS = `#version 300 es
+layout(location=0) in vec3 a_pos;
+layout(location=1) in vec4 a_col;   // rgb + age fade
+layout(location=2) in float a_side; // 0 base .. 1 tip
+uniform mat4 u_vp;
+uniform vec3 u_camPos;
+out vec4 v_col;
+out float v_side;
+out float v_dist;
+void main(){
+  v_col = a_col; v_side = a_side; v_dist = length(a_pos - u_camPos);
+  gl_Position = u_vp * vec4(a_pos, 1.0);
+}`;
+
+export const RIBBON_FS = `#version 300 es
+precision highp float;
+in vec4 v_col;
+in float v_side;
+in float v_dist;
+uniform float u_fogDen;
+out vec4 o_col;
+void main(){
+  float edge = pow(v_side, 3.0) * 1.6 + smoothstep(0.0, 0.4, v_side) * 0.25;
+  float a = v_col.a * v_col.a * edge;
+  vec3 c = pow(v_col.rgb, vec3(2.2)) * (4.0 + 10.0 * pow(v_side, 8.0) * v_col.a) * a * exp(-v_dist * u_fogDen);
+  o_col = vec4(c, 0.0);
+}`;
