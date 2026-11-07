@@ -13,6 +13,10 @@ const types = {
   '.json': 'application/json',
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
+  '.jpg': 'image/jpeg',
+  '.mp3': 'audio/mpeg',
+  '.bin': 'application/octet-stream',
+  '.md': 'text/markdown; charset=utf-8',
 };
 
 http.createServer((req, res) => {

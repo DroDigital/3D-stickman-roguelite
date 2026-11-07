@@ -1,5 +1,6 @@
 // The player: movement, sprint, dodge, the Blade slot's melee chain, lock-on facing, animation layering,
 // weapon trails and cloth scarf. The other three slots live in the Loadout (arsenal.js).
+import { Trail } from './trails.js';
 import { HumanoidAnimator, humanoidTopology, CLIPS, J } from './humanoid.js';
 import { drawRig } from './rig.js';
 import { Anatomy, BODIES, castBody, drawBody, drawSkeleton } from './anatomy.js';
@@ -376,10 +377,21 @@ export class Player {
     return out;
   }
 
-  _trail() {
+  _trail(dt = 0) {
     const active = this.state === 'attack' || this.state === 'ult';
     const pts = this.weaponPoints(this._wp || (this._wp = new Float32Array(9)));
     const isFists = this.weapon.type === 'fists';
+    // cinematic: a smooth HDR ribbon follows the blade; the particle trail below stays as sparks only
+    const ribbon = !isFists && this.game.R.ribbon;
+    if (ribbon) {
+      this.ribbonR = this.ribbonR || new Trail();
+      this.ribbonL = this.ribbonL || new Trail();
+      this.ribbonR.update(dt); this.ribbonL.update(dt);
+      if (active) {
+        this.ribbonR.add([pts[0], pts[1], pts[2]], [pts[3], pts[4], pts[5]]);
+        if (this.weapon.def.dual) this.ribbonL.add([pts[6], pts[7], pts[8]], [pts[6] - (pts[0] - pts[3]), pts[7] - (pts[1] - pts[4]), pts[8] - (pts[2] - pts[5])]);
+      }
+    }
     if (isFists) {
       // fists: trail from the striking limbs
       const P = this.anim.pts;
@@ -399,7 +411,7 @@ export class Player {
         const bx = this.prevBase[0] + (pts[3] - this.prevBase[0]) * t;
         const by = this.prevBase[1] + (pts[4] - this.prevBase[1]) * t;
         const bz = this.prevBase[2] + (pts[5] - this.prevBase[2]) * t;
-        const n = isFists ? 1 : 4;
+        const n = ribbon ? 0 : isFists ? 1 : 4;
         for (let j = 0; j < n; j++) {
           const u = n === 1 ? 1 : 0.25 + (j / (n - 1)) * 0.75;
           P.emit({ x: bx + (tx - bx) * u, y: by + (ty - by) * u, z: bz + (tz - bz) * u, life: 0.13 + this.weapon.tier * 0.02, size: (isFists ? 0.16 : 0.1 + u * 0.08), size1: 0.0, color: col, alpha: 0.5 + u * 0.4, shape: SHAPE.GLOW });
@@ -408,7 +420,7 @@ export class Player {
       if (this.weapon.tier >= 2 && Math.random() < 0.5) {
         P.emit({ x: pts[0], y: pts[1], z: pts[2], vx: (Math.random() - 0.5) * 3, vy: Math.random() * 2, vz: (Math.random() - 0.5) * 3, life: 0.5, size: 0.05, color: col, shape: SHAPE.SPARK, grav: 6 });
       }
-      if (this.weapon.def.dual && this.prevTipL) {
+      if (this.weapon.def.dual && this.prevTipL && !ribbon) {
         for (let k = 0; k < 3; k++) {
           const t = k / 3;
           P.emit({ x: this.prevTipL[0] + (pts[6] - this.prevTipL[0]) * t, y: this.prevTipL[1] + (pts[7] - this.prevTipL[1]) * t, z: this.prevTipL[2] + (pts[8] - this.prevTipL[2]) * t, life: 0.14, size: 0.13, color: col, alpha: 0.8, shape: SHAPE.GLOW });
@@ -464,6 +476,11 @@ export class Player {
       tmpU[0] = w[3]; tmpU[1] = w[4]; tmpU[2] = w[5];
       weaponBasis(tmpU, tmpRef, tmpV, tmpW);
       drawWeapon(R, this.weapon, P[J.LHA * 3], P[J.LHA * 3 + 1], P[J.LHA * 3 + 2], tmpU, tmpV, tmpW, wf);
+    }
+    if (this.ribbonR) {
+      const col = this.weapon.trailColor;
+      this.ribbonR.draw(R, col, 0.75, 1);
+      this.ribbonL.draw(R, col, 0.75, 1);
     }
     if (this.weapon.tier >= 3) {
       const pts = this._wp;

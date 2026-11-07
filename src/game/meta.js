@@ -41,15 +41,17 @@ export const SKILLS = [
 
 export const SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s]));
 
-/** Ink Requiem (asset pack 1) is the game's look; the others stay selectable in Settings. */
-export const DEFAULT_STYLE = 'requiem';
+/** Abyssal Cinematic is the game's look; the hand-drawn packs and the retro look stay selectable in Settings. */
+export const DEFAULT_STYLE = 'cinematic';
+/** Bumped when the default look changes, so saves move to it unless the player picks again afterwards. */
+export const LOOK_VERSION = 2;
 
 export function defaultSave() {
   return {
     echoes: 0,
     ranks: { core: 1 },
     stats: { runs: 0, bestDepth: 0, kills: 0, bosses: 0, bestTime: 0 },
-    settings: { quality: 432, volume: 0.6, sensitivity: 1, shake: 1, lockAssist: 1, lockFlick: 1, style: DEFAULT_STYLE, styleChosen: false },
+    settings: { quality: 432, graphics: 'high', volume: 0.6, music: 0.7, sensitivity: 1, shake: 1, lockAssist: 1, lockFlick: 1, style: DEFAULT_STYLE, styleChosen: false, lookVersion: LOOK_VERSION },
   };
 }
 
@@ -68,6 +70,8 @@ export class Meta {
         const settings = { ...base.settings, ...d.settings };
         // older saves stored the then-default 'retro' without the player choosing it: move them to the new look
         if (!settings.styleChosen) settings.style = DEFAULT_STYLE;
+        // saves from before the cinematic overhaul move to it once, even if they had picked a pack
+        if ((d.settings?.lookVersion || 1) < LOOK_VERSION) { settings.style = DEFAULT_STYLE; settings.styleChosen = false; settings.lookVersion = LOOK_VERSION; }
         return { ...base, ...d, ranks: { ...base.ranks, ...d.ranks }, stats: { ...base.stats, ...d.stats }, settings };
       }
     } catch { /* corrupted or unavailable storage */ }

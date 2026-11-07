@@ -123,7 +123,12 @@ export function octaMesh() {
  * Height-field terrain mesh. Default: flat shaded, one colour per triangle (retro facets).
  * `smooth`: shared per-vertex colours and normals, so colour washes blend across triangles (painted toon ground).
  */
-export function terrainMesh(n, size, heightFn, colorFn, smooth = false) {
+/**
+ * Terrain grid. `smooth` builds the painted mesh with per-vertex normals; `glowFn(x, z)` (optional, 0..1) is stored
+ * as extra normal length on that mesh (shaders normalise normals, so only the cinematic look reads it back as the
+ * strength of glowing veins).
+ */
+export function terrainMesh(n, size, heightFn, colorFn, smooth = false, glowFn = null) {
   const step = size / n;
   const half = size / 2;
   const H = new Float32Array((n + 1) * (n + 1));
@@ -144,7 +149,8 @@ export function terrainMesh(n, size, heightFn, colorFn, smooth = false) {
         const l = Math.hypot(nx, ny, nz);
         nx /= l; ny /= l; nz /= l;
         const v = (j * w + i) * 3;
-        N[v] = nx; N[v + 1] = ny; N[v + 2] = nz;
+        const gk = glowFn ? 1 + glowFn(i * step - half, j * step - half) : 1;
+        N[v] = nx * gk; N[v + 1] = ny * gk; N[v + 2] = nz * gk;
         const c = colorFn(i * step - half, H[j * w + i], j * step - half, ny);
         C[v] = c[0]; C[v + 1] = c[1]; C[v + 2] = c[2];
       }

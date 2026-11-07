@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Abyssal Stride</title>
-  <meta name="description" content="A hand-drawn anime 3D freeflow-combat roguelite in a cosmic horror world." />
+  <meta name="description" content="A cinematic dark-fantasy 3D action roguelite in a cosmic horror world." />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -77,19 +77,49 @@
     <div class="menu-inner">
       <div class="logo"><i class="logo-slash"></i><span class="logo-a">ABYSSAL</span><span class="logo-b">STRIDE</span></div>
       <p class="tagline">Descend through the dreams of dead gods. Strike. Counter. Unmake.</p>
-      <div class="menu-buttons">
-        <button id="btn-start" class="btn big">Begin Descent</button>
-        <button id="btn-tree" class="btn">Ossuary of Echoes <span class="echo-count">◈ <b id="menu-echoes">0</b></span></button>
-        <button id="btn-settings" class="btn ghost">Settings</button>
-      </div>
+      <nav class="menu-buttons" aria-label="Main menu">
+        <button id="btn-start" class="btn big" data-desc="Begin a new run from the first depth.">Begin Descent</button>
+        <button id="btn-tree" class="btn" data-desc="Spend echoes from past runs on permanent power.">Ossuary of Echoes <span class="echo-count">◈ <b id="menu-echoes">0</b></span></button>
+        <button id="btn-controls" class="btn ghost" data-desc="Keyboard, mouse and gamepad controls.">Controls</button>
+        <button id="btn-settings" class="btn ghost" data-desc="Graphics, audio, camera and art style.">Settings</button>
+        <button id="btn-credits" class="btn ghost" data-desc="The artists whose free assets build this world.">Credits</button>
+      </nav>
+      <p id="menu-desc" class="menu-desc" aria-live="polite"></p>
       <p id="menu-stats" class="muted"></p>
+    </div>
+  </div>
+
+  <!-- Controls reference -->
+  <div id="controls" class="screen hidden">
+    <div class="panel wide">
+      <h2>Controls</h2>
       <div class="controls">
-        <div><kbd>WASD</kbd> Move</div><div><kbd>Shift</kbd> Sprint</div><div><kbd>Space</kbd> Dodge</div>
-        <div><kbd>LMB</kbd> Blade</div><div><kbd>RMB</kbd> Arms (hold)</div><div><kbd>Q</kbd> Arcana</div>
+        <div><kbd>WASD</kbd> Move</div><div><kbd>Shift</kbd> Sprint</div><div><kbd>Space</kbd> Dodge / backflip</div>
+        <div><kbd>LMB</kbd>/<kbd>J</kbd> Blade</div><div><kbd>RMB</kbd>/<kbd>K</kbd> Arms (hold)</div><div><kbd>Q</kbd> Arcana</div>
         <div><kbd>F</kbd> Power</div><div><kbd>R</kbd> Rend Reality</div><div><kbd>E</kbd> Open container</div>
         <div><kbd>Tab</kbd>/<kbd>MMB</kbd> Lock on</div><div><kbd>Wheel</kbd>/flick Switch target</div><div><kbd>Esc</kbd> Pause</div>
       </div>
-      <p class="muted small">Gamepad supported. Four slots, four weapons: level them up, and pair the marked combinations to evolve them.</p>
+      <p class="muted small">Gamepad: left stick move · right stick camera · X blade · Y arms · B arcana · RB power · A dodge · RT ultimate · LT/R3 lock on · LB open · Start pause.</p>
+      <p class="muted small">Four slots, four weapons: level them up and pair the marked combinations to evolve them. Every enemy attack is telegraphed — dodge through it.</p>
+      <button class="btn back" data-back>Back</button>
+    </div>
+  </div>
+
+  <!-- Credits -->
+  <div id="credits" class="screen hidden">
+    <div class="panel wide credits">
+      <h2>Credits</h2>
+      <p>Code, procedural animation, shaders, effects and score generated in plain JavaScript and WebGL2.</p>
+      <h3>Textures — CC0</h3>
+      <p>Poly Haven (burned ground, dark rock, damp sand, seaside rock, moon dust, red mud stones, cracked red ground, pine bark, castle wall slates, rough linen, brown leather, coral fort wall, red leather) and ambientCG (Metal061B, Metal046B, Ivory001A, Marble006).</p>
+      <h3>HDR environments — CC0</h3>
+      <p>Poly Haven, by Greg Zaal: Venice Sunset, Quarry 01, Moonless Golf, Blouberg Sunrise 2.</p>
+      <h3>Character model — CC0</h3>
+      <p>Mannequin from the Universal Animation Library by Quaternius.</p>
+      <h3>Sound</h3>
+      <p>“Oculus Audio Pack 01” by Oculus VR, LLC, licensed under CC BY 4.0 (renamed and transcoded). sfx-kit by Wyzowl, CC0.</p>
+      <p class="muted small">Full list in assets/CREDITS.md.</p>
+      <button class="btn back" data-back>Back</button>
     </div>
   </div>
 
@@ -100,7 +130,9 @@
   <div id="pause" class="screen hidden">
     <div class="panel">
       <h2>Paused</h2>
+      <div id="pause-stats" class="pause-stats"></div>
       <button id="btn-resume" class="btn big">Resume</button>
+      <button id="btn-pause-controls" class="btn">Controls</button>
       <button id="btn-pause-settings" class="btn">Settings</button>
       <button id="btn-abandon" class="btn ghost danger">Abandon Run</button>
     </div>
@@ -108,38 +140,63 @@
 
   <!-- Settings -->
   <div id="settings" class="screen hidden">
-    <div class="panel">
+    <div class="panel settings-panel">
       <h2>Settings</h2>
-      <label>Render resolution
-        <select id="set-quality">
-          <option value="300">Crunchy (300p)</option>
-          <option value="432">Retro (432p)</option>
-          <option value="600">Balanced (600p)</option>
-          <option value="0">Native</option>
-        </select>
-      </label>
-      <label>Art style
-        <select id="set-style">
-          <option value="requiem">Ink Requiem (default)</option>
-          <optgroup label="Other packs">
-            <option value="sutra">Black Sutra</option>
-            <option value="lantern">Paper Lantern</option>
-            <option value="retro">Retro low-poly (original)</option>
-          </optgroup>
-          <optgroup label="Combinations">
-            <option value="requiem+neon">Ink Requiem + neon lighting</option>
-            <option value="sutra+colour">Black Sutra in colour</option>
-            <option value="requiem+diorama">Ink Requiem on the diorama camera</option>
-            <option value="lantern+perspective">Paper Lantern in true 3D</option>
-          </optgroup>
-        </select>
-      </label>
-      <label>Volume <input id="set-volume" type="range" min="0" max="1" step="0.05" /></label>
-      <label>Mouse sensitivity <input id="set-sens" type="range" min="0.3" max="2.5" step="0.05" /></label>
-      <label>Screen shake <input id="set-shake" type="range" min="0" max="1.5" step="0.05" /></label>
-      <label>Lock-on camera assist <input id="set-lock" type="range" min="0.2" max="2" step="0.05" /></label>
-      <label>Lock-on flick switching <input id="set-flick" type="range" min="0.3" max="2.5" step="0.05" /></label>
-      <button id="settings-close" class="btn">Done</button>
+      <div class="tabs" role="tablist">
+        <button class="tab on" data-tab="video" role="tab">Video</button>
+        <button class="tab" data-tab="audio" role="tab">Audio</button>
+        <button class="tab" data-tab="controls" role="tab">Camera &amp; Controls</button>
+      </div>
+      <section class="tab-page" data-page="video">
+        <label>Art style
+          <select id="set-style">
+            <option value="cinematic">Abyssal Cinematic (default)</option>
+            <optgroup label="Hand-drawn packs">
+              <option value="requiem">Ink Requiem</option>
+              <option value="sutra">Black Sutra</option>
+              <option value="lantern">Paper Lantern</option>
+              <option value="retro">Retro low-poly (original)</option>
+            </optgroup>
+            <optgroup label="Combinations">
+              <option value="requiem+neon">Ink Requiem + neon lighting</option>
+              <option value="sutra+colour">Black Sutra in colour</option>
+              <option value="requiem+diorama">Ink Requiem on the diorama camera</option>
+              <option value="lantern+perspective">Paper Lantern in true 3D</option>
+            </optgroup>
+          </select>
+        </label>
+        <label>Graphics quality
+          <select id="set-gfx">
+            <option value="low">Low — fastest, no ambient occlusion</option>
+            <option value="medium">Medium</option>
+            <option value="high">High (recommended)</option>
+            <option value="ultra">Ultra — 4K shadows, full resolution</option>
+          </select>
+        </label>
+        <label>Retro render resolution
+          <select id="set-quality">
+            <option value="300">Crunchy (300p)</option>
+            <option value="432">Retro (432p)</option>
+            <option value="600">Balanced (600p)</option>
+            <option value="0">Native</option>
+          </select>
+        </label>
+        <label>Screen shake <input id="set-shake" type="range" min="0" max="1.5" step="0.05" /></label>
+        <p class="setting-note muted small">Quality applies instantly. Retro resolution only affects the Retro look.</p>
+      </section>
+      <section class="tab-page hidden" data-page="audio">
+        <label>Master volume <input id="set-volume" type="range" min="0" max="1" step="0.05" /></label>
+        <label>Music <input id="set-music" type="range" min="0" max="1" step="0.05" /></label>
+      </section>
+      <section class="tab-page hidden" data-page="controls">
+        <label>Mouse sensitivity <input id="set-sens" type="range" min="0.3" max="2.5" step="0.05" /></label>
+        <label>Lock-on camera assist <input id="set-lock" type="range" min="0.2" max="2" step="0.05" /></label>
+        <label>Lock-on flick switching <input id="set-flick" type="range" min="0.3" max="2.5" step="0.05" /></label>
+      </section>
+      <div class="row">
+        <button id="settings-reset" class="btn ghost">Restore Defaults</button>
+        <button id="settings-close" class="btn">Done</button>
+      </div>
     </div>
   </div>
 
@@ -175,6 +232,8 @@
     <div id="tree-detail" class="panel"><p class="muted">Hover a node to inspect it. Click to purchase.</p></div>
   </div>
 
+  <div id="navhint" class="navhint hidden" aria-hidden="true"></div>
+  <div id="loading" aria-hidden="true"><i></i><span>Summoning the abyss</span></div>
   <div id="fatal" class="screen hidden"></div>
   <script type="module" src="src/main.js"></script>
 </body>

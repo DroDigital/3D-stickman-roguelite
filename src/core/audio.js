@@ -1,4 +1,6 @@
-// Procedural WebAudio sound design: no samples, everything synthesized at runtime.
+// WebAudio sound design. The cinematic pack plays sourced samples through Soundscape (reverb, 3D panning, adaptive
+// score); the hand-drawn and retro packs keep their fully synthesised sets, which also cover anything unsampled.
+import { Soundscape } from './soundscape.js';
 
 export class Audio {
   constructor() {
@@ -8,6 +10,9 @@ export class Audio {
     this.volume = 0.6;
     this.lastPlay = new Map();
     this.style = 'retro';
+    this.scape = null;
+    this.bank = null;
+    this.realm = 'ashen';
   }
 
   /**
@@ -38,6 +43,30 @@ export class Audio {
     const d = this.noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     this._startAmbience();
+    try {
+      this.scape = new Soundscape(this);
+      this.scape.setRealm(this.realm);
+      if (this.bank) this.scape.attach(this.bank);
+    } catch (e) { console.warn('soundscape unavailable', e); this.scape = null; }
+  }
+
+  /** Sample banks from the asset loader (ArrayBuffers); decoded once the AudioContext exists. */
+  attachSamples(bank) {
+    this.bank = bank;
+    if (this.scape && bank) this.scape.attach(bank);
+  }
+
+  get cinematic() { return this.style === 'cinematic' && this.scape && this.scape.ready; }
+
+  setRealm(id) { this.realm = id; if (this.scape) this.scape.setRealm(id); }
+  setWeather(w) { if (this.cinematic) this.scape.setWeather(w); }
+  setListener(x, y, z, fx, fy, fz) { if (this.cinematic) this.scape.setListener(x, y, z, fx, fy, fz); }
+  duck(a, t) { if (this.cinematic) this.scape.duck(a, t); }
+  /** Per-frame: adaptive score intensity, slow-motion / low-health muffling. */
+  update(dt, state) {
+    if (!this.ctx) return;
+    if (this.cinematic) this.scape.update(dt, state);
+    if (this.ambGain) this.ambGain.gain.setTargetAtTime(this.cinematic ? 0 : this.ambLevel ?? 0, this.ctx.currentTime, 1.5);
   }
 
   resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
@@ -87,8 +116,14 @@ export class Audio {
     o.stop(t + dur + 0.05);
   }
 
-  play(name, intensity = 1) {
+  /** Play a named sound. `delay` in seconds; `pos` {x,y,z} places it in 3D (cinematic pack). */
+  play(name, intensity = 1, delay = 0, pos = null) {
     if (!this.enabled || !this.ctx) return;
+    if (this.style === 'cinematic') {
+      if (this.cinematic && this.scape.play(name, intensity, delay, pos)) return;
+      if (this._critter(name, intensity)) return;
+      if (this._anime(name, intensity)) return;
+    }
     if (this.style === 'anime' && this._anime(name, intensity)) return;
     if (this.style === 'taiko' && this._taiko(name, intensity)) return;
     if (this.style === 'folk' && this._folk(name, intensity)) return;
@@ -404,6 +439,45 @@ export class Audio {
     }
   }
 
+  /** Synthesised critter calls (no samples for these): crow caws, moth flutter, fish bubbles, fly buzz. */
+  _critter(name, k) {
+    const c = this.ctx, t = c.currentTime;
+    switch (name) {
+      case 'caw':
+        for (let i = 0; i < 2 + ((Math.random() * 2) | 0); i++) {
+          const s = t + i * (0.18 + Math.random() * 0.1);
+          this._noise(s, 0.16, 1100 + Math.random() * 300, 3, 0.12 * k, 'bandpass', 700);
+          this._tone(s, 0.14, 620 + Math.random() * 80, 420, 0.05 * k, 'sawtooth');
+        }
+        return true;
+      case 'flutter':
+        for (let i = 0; i < 8; i++) this._noise(t + i * 0.035, 0.03, 2200, 1, 0.05 * k, 'bandpass');
+        return true;
+      case 'bubble':
+        for (let i = 0; i < 5; i++) this._tone(t + i * 0.06 + Math.random() * 0.04, 0.08, 300 + Math.random() * 400, 900 + Math.random() * 300, 0.05 * k, 'sine');
+        return true;
+      case 'buzz':
+        this._tone(t, 0.6, 180, 210, 0.03 * k, 'sawtooth', 0.05);
+        return true;
+      case 'step': case 'land': case 'effort': case 'whisper': case 'chains':
+        return true; // sampled-only details: silent without the bank
+      case 'thunder':
+        this._noise(t, 2.2, 120, 0.7, 0.5 * k, 'lowpass', 40);
+        return true;
+      case 'ultimate': case 'bossIntro': case 'bossDeath': case 'evolve': case 'finisher':
+        this._tone(t, 1.4, 70, 30, 0.6, 'sine');
+        this._noise(t, 0.8, 200, 0.6, 0.3, 'lowpass', 60);
+        return true;
+      case 'heroDeath':
+        this._tone(t, 2, 220, 40, 0.3, 'sawtooth');
+        return true;
+      case 'laugh':
+        return true;
+      default:
+        return false;
+    }
+  }
+
   _startAmbience() {
     const c = this.ctx;
     this.ambGain = c.createGain();
@@ -435,7 +509,8 @@ export class Audio {
   setAmbience(level, pitch = 1) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    this.ambGain.gain.setTargetAtTime(level * 0.35, t, 1.2);
+    this.ambLevel = level * 0.35;
+    this.ambGain.gain.setTargetAtTime(this.cinematic ? 0 : this.ambLevel, t, 1.2);
     const base = [41.2, 41.7, 61.7, 82.1];
     this.ambOsc.forEach((o, i) => o.frequency.setTargetAtTime(base[i] * pitch, t, 2));
   }

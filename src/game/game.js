@@ -12,12 +12,16 @@ import { Enemy, ENEMY_TYPES } from './enemies.js';
 import { BOSSES } from './bosses.js';
 import { Ragdolls } from './rig.js';
 import { J, ANIM, tickAnimClock } from './humanoid.js';
-import { BODIES, drawBody } from './anatomy.js';
+import { Anatomy, BODIES, castBody, drawBody } from './anatomy.js';
 import { strike, drawProjectile, ITEMS, ITEM_IDS } from './arsenal.js';
 import { Spawner } from './spawner.js';
 import { PLAYER_BASE } from './config.js';
 import { rollOffers, applyOffer } from './upgrades.js';
 import { echoesForRun } from './meta.js';
+import { Weather } from './weather.js';
+import { Director } from './director.js';
+import { LOOKS } from '../gfx/cinematic.js';
+import { REALM_MATS } from '../gfx/materials.js';
 
 export class Game {
   constructor(R, input, audio, ui, meta) {
@@ -59,6 +63,9 @@ export class Game {
     this._axis = [0, 0];
     this._mouse = [0, 0];
     this.settings = meta.data.settings;
+    this.weather = new Weather(this);
+    this.director = new Director();
+    this.stepAcc = 0;
     this._buildTitleWorld();
   }
 
@@ -70,8 +77,25 @@ export class Game {
     this.audio.setStyle(st.sfx || (st.toon ? 'anime' : 'retro'));
     this.style = st;
     if (this.ui && this.ui.setPack) this.ui.setPack(st);
+    // re-dress everyone already on stage in the new pack's cast
+    for (const e of this.enemies || []) if (e.anatomy) e.anatomy = new Anatomy(castBody(st.cast, e.bodyId), e.size);
+    if (this.player && this.player.anatomy) this.player.anatomy = new Anatomy(castBody(st.cast, 'hero'), 1);
     return st;
   }
+
+  /** Realm look for the cinematic renderer, weather cycle and soundscape. */
+  _applyRealm(mode) {
+    const d = this.dim, R = this.R;
+    const rm = REALM_MATS[d.id] || REALM_MATS.ashen;
+    R.look = { ...(LOOKS[d.id] || LOOKS.ashen), terrainMats: [rm.ground, rm.rock] };
+    R.accent = d.terrain.accent;
+    R.groundTint = d.terrain.low;
+    this.weather.setRealm(d, mode);
+    this.audio.setRealm(d.id);
+  }
+
+  /** True when the cinematic pack is active (camera director shots, weather, sampled sound). */
+  get cinematic() { return !!(this.style && this.style.cinematic); }
 
   /** Anime impact frame: a couple of two-tone frames on decisive hits (throttled so it never strobes). */
   impact(strength = 1) {
@@ -89,6 +113,7 @@ export class Game {
     this.scaling = { hp: 1, dmg: 1 };
     this.world = new World(this.dim, (Math.random() * 1e9) | 0, 'open', this.R, 0);
     this.particles.ground = (x, z) => this.world.height(x, z);
+    this._applyRealm('open');
     this.enemies = [];
     this.projectiles = [];
     this.hazards = [];
@@ -154,6 +179,7 @@ export class Game {
     this.trail = [];
     this.world = new World(this.dim, this.rng.int(1, 1e9), mode, this.R, depth);
     this.particles.ground = (x, z) => this.world.height(x, z);
+    this._applyRealm(mode);
     this.dimTime = 0;
     this.spawner.reset();
     this.portalTimer = 165;
@@ -200,6 +226,13 @@ export class Game {
   }
 
   get inCombat() { return this.enemies.length > 0 && this.nearestEnemy(this.player.x, this.player.z, 14) !== null; }
+
+  /** Living enemies within r of e (excluding e). */
+  _nearbyAlive(e, r) {
+    let n = 0;
+    for (const o of this.enemies) if (o !== e && o.alive && (o.x - e.x) ** 2 + (o.z - e.z) ** 2 < r * r) n++;
+    return n;
+  }
 
   forEnemiesNear(x, z, r, fn) {
     this.enemyHash.query(x, z, r + 3, (e) => {
@@ -407,7 +440,10 @@ export class Game {
     if (hits > 0) {
       this.hitstop(move.ultimate ? 0.12 : 0.035 + Math.min(0.03, hits * 0.008));
       this.shake(move.ultimate ? 0.7 : 0.14 + move.dmg * 0.06);
+      // heavy blows tilt the frame and punch the lens
+      if (move.dmg >= 1.8 || move.ultimate) { this.director.kickRoll((Math.random() < 0.5 ? -1 : 1) * (move.ultimate ? 0.09 : 0.04)); this.director.punchFov(move.ultimate ? 0.12 : 0.05); }
     }
+    if (move.ultimate) { this.audio.play('ultimate'); this.R.post_.bloomBoost = 2.5; }
   }
 
   damageEnemy(e, info) {
@@ -426,7 +462,7 @@ export class Game {
       this.particles.burst(e.x, y, e.z, n, { speed: info.crit ? 9 : 6, dir: [info.dirX, 0.4, info.dirZ], spread: 0.8, color: this.dim.blood, shape: SHAPE.CHUNK, size: 0.08, life: 0.7, grav: 16, bounce: 0.15, additive: false });
       this.particles.burst(e.x, y, e.z, info.crit ? 12 : 5, { speed: 10, dir: [info.dirX, 0.2, info.dirZ], spread: 1, color: info.color || [1, 1, 1], shape: SHAPE.SPARK, size: 0.07, life: 0.35, grav: 4 });
       this.particles.emit({ x: e.x, y, z: e.z, life: 0.12, size: info.crit ? 1.6 : 0.9, size1: 0.2, color: info.color || [1, 1, 1], shape: SHAPE.STAR });
-      this.audio.play(info.crit ? 'crit' : 'hit', info.crit ? 1 : 0.7);
+      this.audio.play(info.crit ? 'crit' : 'hit', info.crit ? 1 : 0.7, 0, { x: e.x, y, z: e.z });
       if (Math.random() < 0.35) this.splat(e.x + info.dirX * 1.2, e.z + info.dirZ * 1.2, 0.5 + Math.random() * 0.7);
     }
     p.ult = Math.min(1, p.ult + (info.crit ? 0.006 : 0.003) * p.stats.ultCharge * (info.source === 'melee' ? 1.6 : 1));
@@ -462,7 +498,13 @@ export class Game {
     this.particles.burst(e.x, y, e.z, 10, { speed: 2, color: this.dim.ash, shape: SHAPE.SMOKE, size: 0.6, size1: 1.2, life: 1, drag: 2, grav: -0.5, additive: false, alpha: 0.5 });
     if (e.iceT > 0) this.particles.burst(e.x, y, e.z, 20, { speed: 7, color: [0.7, 0.95, 1], shape: SHAPE.CHUNK, size: 0.12, life: 0.8, grav: 14, bounce: 0.3, additive: false });
     this.splat(e.x, e.z, 1 + Math.random() * 0.8 * e.size);
-    this.audio.play('death');
+    this.audio.play('death', 1, 0, { x: e.x, y, z: e.z });
+    this.weather.scare(e.x, e.z, 9);
+    this.blasts.push({ x: e.x, z: e.z, r: 2.5 * e.size, s: 0.8, t: 0.5 });
+    // finishing shots: elites, and the last enemy standing near the hero
+    if (!e.boss && (e.elite || (overkill && this._nearbyAlive(e, 14) === 0)) && this.cinematic && this.state === 'play') {
+      if (this.director.finisher(e)) { this.slowmo(0.55, 0.3); this.audio.play('finisher'); }
+    }
     if (this.run) this.run.kills++;
     // rewards: experience is lean on purpose; depth adds a little, not a lot
     const xp = e.xp * p.stats.xpMul * (1 + this.depth * 0.12);
@@ -489,6 +531,7 @@ export class Game {
       this.shake(0.45);
       this.hitstop(0.06);
       this.R.post_.damage = 1;
+      this.director.kickRoll((Math.random() < 0.5 ? -1 : 1) * 0.05);
       this.audio.play('hurt');
       this.particles.burst(p.x, p.y + 1.2, p.z, 14, { speed: 5, color: [0.6, 0.02, 0.05], shape: SHAPE.CHUNK, size: 0.07, life: 0.6, grav: 14, additive: false });
       this.number(p.x, p.y + 2.2, p.z, real, false, [1, 0.25, 0.25]);
@@ -512,7 +555,10 @@ export class Game {
       this.world.debris.spawn({ x: x + Math.cos(a) * rr, y: y + 0.2, z: z + Math.sin(a) * rr, vx: Math.cos(a) * 5, vy: 5 + Math.random() * 6, vz: Math.sin(a) * 5, sx: 0.25, sy: 0.18, sz: 0.22, c: this.dim.terrain.steep, life: 2.5 });
     }
     this.R.light(x, y + 1, z, r * 2, color[0], color[1], color[2], 3);
-    this.audio.play('boom');
+    this.audio.play('boom', big ? 1 : 0.7, 0, { x, y: y + 1, z });
+    this.blasts.push({ x, z, r: r * 0.8, s: 1.6, t: 0.6 });
+    this.weather.scare(x, z, r * 3 + 8);
+    this.director.punchFov(big ? 0.1 : 0.03);
     if (big) {
       this.R.post_.warp = 1.4;
       this.R.post_.aberr = 2;
@@ -576,7 +622,11 @@ export class Game {
     this.particles.burst(e.x, this.world.height(e.x, e.z) + 1.5, e.z, 24, { speed: 4, color: [0.8, 0.5, 1], shape: SHAPE.GLOW, size: 0.15, life: 0.5 });
   }
 
-  shake(a) { this.shakeAmt = Math.min(1.5, this.shakeAmt + a * (this.settings.shake ?? 1)); }
+  shake(a) {
+    const k = this.settings.shake ?? 1;
+    this.shakeAmt = Math.min(1.5, this.shakeAmt + a * k);
+    this.director.addTrauma(a * 0.55 * k);
+  }
   hitstop(t) { this.hitstopT = Math.max(this.hitstopT, t); }
   slowmo(dur, scale) { this.slowT = dur; this.slowScale = scale; }
 
@@ -611,8 +661,9 @@ export class Game {
   }
 
   bossRoar(e, text, intro = false) {
-    this.audio.play('roar');
+    this.audio.play('roar', 1, 0, { x: e.x, y: e.y + 2, z: e.z });
     this.shake(1);
+    if (intro && this.cinematic) { this.director.bossIntro(e); this.audio.play('bossIntro'); }
     if (intro) this.ui.title(e.name, text, 'BOSS');
     else this.announce(text, 'boss');
   }
@@ -648,6 +699,7 @@ export class Game {
         this.audio.play(o.kind === 'evolve' ? 'levelup' : 'select');
         this.particles.burst(p.x, p.y + 1, p.z, o.kind === 'evolve' ? 120 : 40, { speed: o.kind === 'evolve' ? 10 : 6, color: o.color ? hex(o.color) : [1, 1, 1], shape: SHAPE.SPARK, size: 0.08, life: 0.7, grav: 3 });
         if (o.kind === 'evolve' && this.run) this.run.evolutions++;
+        if (o.kind === 'evolve') { this.audio.play('evolve'); this.director.punchFov(0.1); this.R.post_.bloomBoost = 2; }
         if (msg) this.announce(msg, o.kind === 'evolve' ? 'boss' : 'loot');
         this.ui.hideOffers();
         this.state = 'play';
@@ -696,6 +748,8 @@ export class Game {
 
   onBossKilled(e) {
     this.run.bosses++;
+    this.director.deathBeat(e, 2.6);
+    this.audio.play('bossDeath');
     this.slowmo(1.8, 0.2);
     this.shake(1.5);
     this.R.post_.warp = 2;
@@ -727,6 +781,8 @@ export class Game {
     p.state = 'dead';
     this.ragdolls.spawn(p.topo, p.anim.pts, p.palette, { impulse: [0, 4, 0], impulsePoint: J.CHEST, life: 30, ash: this.dim.ash, blood: this.dim.blood, body: p.anatomy ? p.anatomy.body : BODIES.hero });
     this.slowmo(2.5, 0.25);
+    this.director.deathBeat(p, 2.6);
+    this.audio.play('heroDeath');
     this.state = 'dying';
     this.dyingT = 2.4;
     this.input.releaseLock();
@@ -768,6 +824,19 @@ export class Game {
     R.post_.aberr = damp(R.post_.aberr, 0.25, 3, rawDt);
     R.post_.warp = damp(R.post_.warp, 0.15, 2, rawDt);
     R.post_.desat = damp(R.post_.desat, this.state === 'dying' || this.state === 'dead' ? 0.85 : this.slowT > 0 ? 0.35 : 0, 6, rawDt);
+    R.post_.bloomBoost = damp(R.post_.bloomBoost || 0, 0, 3, rawDt);
+    const p0 = this.player;
+    R.post_.lowHp = this.state === 'play' && p0 && p0.alive ? clamp(1 - p0.hp / (p0.stats.maxHp * 0.3), 0, 1) : 0;
+    const live = this.state === 'play' || this.state === 'title' || this.state === 'dying';
+    this.weather.update(live ? rawDt : 0, live);
+    this.audio.update(rawDt, {
+      timeScale: this.state === 'play' || this.state === 'dying' ? this.timeScale ?? 1 : 1,
+      lowHp: R.post_.lowHp,
+      intensity: this._combatIntensity(),
+      boss: !!(this.boss && this.boss.alive),
+      paused: this.state === 'paused' || this.state === 'levelup',
+      musicVol: this.settings.music ?? 0.7,
+    });
 
     if (this.transition) {
       const tr = this.transition;
@@ -846,6 +915,7 @@ export class Game {
     }
 
     this.player.update(dt, input);
+    this._footsteps(dt);
     this._updateBossFight(dt);
     this._updateWorld(dt);
     this._updateObjectives(dt);
@@ -1231,6 +1301,38 @@ export class Game {
     }
   }
 
+  /** 0..1 how heated the fight is (nearby enemies, elites, telegraphed attacks) — drives the adaptive score. */
+  _combatIntensity() {
+    if (this.state !== 'play' || !this.player) return 0;
+    const p = this.player;
+    let k = 0;
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      const d2 = (e.x - p.x) ** 2 + (e.z - p.z) ** 2;
+      if (d2 < 22 * 22) k += (e.elite ? 0.3 : 0.12) + (e.telegraph ? 0.1 : 0);
+    }
+    return clamp(k, 0, 1);
+  }
+
+  /** Footfalls for the soundscape: a step every stride, a heavier landing after dodges. */
+  _footsteps(dt) {
+    const p = this.player;
+    if (!p.alive) return;
+    const sp = Math.hypot(p.vx, p.vz);
+    if (p.state === 'dodge' || p.state === 'dash') { this.stepAcc = 0; this._wasRolling = true; return; }
+    if (this._wasRolling) { this._wasRolling = false; this.audio.play('land', 0.8); }
+    this.stepAcc += sp * dt;
+    const stride = p.sprinting ? 1.5 : 1.0;
+    if (this.stepAcc > stride && sp > 1) {
+      this.stepAcc = 0;
+      this.audio.play('step', p.sprinting ? 1.2 : 0.8);
+      // footfalls in rain throw up droplets; in ash, little puffs
+      const w = this.weather;
+      if (this.cinematic && w.wet > 0.3) this.particles.burst(p.x, p.y + 0.05, p.z, 4, { speed: 1.5, up: 1.5, color: [0.55, 0.6, 0.65], shape: SHAPE.CHUNK, size: 0.02, life: 0.35, grav: 12, additive: false, alpha: 0.6 });
+      else if (this.cinematic && w.dust > 0.3) this.particles.emit({ x: p.x, y: p.y + 0.1, z: p.z, vy: 0.3, life: 0.8, size: 0.15, size1: 0.5, color: this.dim.ash, shape: SHAPE.SMOKE, drag: 2, additive: false, alpha: 0.35 });
+    }
+  }
+
   /** The player's wake: ambient particles part around them, and sprinting kicks up the realm and streaks the air. */
   _motionFx(dt) {
     const p = this.player, P = this.particles, F = P.field;
@@ -1274,12 +1376,25 @@ export class Game {
   _updateCamera(dt) {
     const p = this.player;
     const t = this.camTarget;
+    const o = this.director.update(dt);
+    const bl = this.director.blend;
     t[0] = damp(t[0], p.x, 14, dt);
     t[1] = damp(t[1], p.y + 1.55, 10, dt);
     t[2] = damp(t[2], p.z, 14, dt);
     let dist = this.camDist;
     if (this.boss && this.boss.alive) dist += 2.5;
     let pitch = this.camPitch;
+    let yaw = this.camYaw;
+    // cinematic camera: a slightly lower, closer over-the-shoulder framing that eases wider in a crowd
+    if (this.cinematic && !this.R.ortho) {
+      const crowd = this._combatIntensity();
+      dist *= 0.86 + crowd * 0.22;
+      pitch -= 0.04;
+    }
+    // director shots blend in as offsets
+    yaw += o.yaw * bl; pitch += o.pitch * bl; dist *= 1 + (o.dist - 1) * bl;
+    let tx = t[0], ty = t[1] + o.lookY * bl, tz = t[2];
+    if (o.target) { tx = lerp(tx, o.target.x, bl * 0.55); ty = lerp(ty, o.target.y, bl * 0.4); tz = lerp(tz, o.target.z, bl * 0.55); }
     if (this.R.ortho) {
       // pseudo-3D: a high, distant orthographic "diorama" camera; framing is set by the ortho size
       pitch = clamp(this.camPitch + 0.32, 0.55, 1.05);
@@ -1289,22 +1404,35 @@ export class Game {
       this.R.orthoSize = this.camDist * 0.75 + (this.boss && this.boss.alive ? 3 : 0);
     }
     const cp = Math.cos(pitch), sp = Math.sin(pitch);
-    const fx = Math.sin(this.camYaw) * cp, fy = -sp, fz = Math.cos(this.camYaw) * cp;
-    let px = t[0] - fx * dist, py = t[1] - fy * dist, pz = t[2] - fz * dist;
-    // keep above terrain
-    const gh = this.world.height(px, pz) + 0.6;
+    const fx = Math.sin(yaw) * cp, fy = -sp, fz = Math.cos(yaw) * cp;
+    let px = tx - fx * dist, py = ty - fy * dist, pz = tz - fz * dist;
+    // keep above terrain (sample a little toward the target too, so ridges don't clip the lens)
+    const gh = Math.max(this.world.height(px, pz), this.world.height(lerp(px, tx, 0.3), lerp(pz, tz, 0.3))) + 0.6;
     if (py < gh) py = gh;
-    // shake
+    // shake: trauma noise on position and aim (the old jitter for the hand-drawn looks)
     this.shakeAmt = Math.max(0, this.shakeAmt - dt * 2.2);
-    const s = this.shakeAmt * this.shakeAmt * 0.35;
-    const tt = this.time * 40;
-    px += Math.sin(tt * 1.1) * s; py += Math.sin(tt * 1.7 + 1) * s; pz += Math.cos(tt * 1.3) * s;
+    if (this.cinematic) {
+      px += o.px; py += o.py; pz += o.pz;
+      tx += o.rx * dist * Math.cos(yaw); tz -= o.rx * dist * Math.sin(yaw); ty += o.ry * dist;
+    } else {
+      const s = this.shakeAmt * this.shakeAmt * 0.35;
+      const tt = this.time * 40;
+      px += Math.sin(tt * 1.1) * s; py += Math.sin(tt * 1.7 + 1) * s; pz += Math.cos(tt * 1.3) * s;
+    }
     this.camPos[0] = px; this.camPos[1] = py; this.camPos[2] = pz;
     this.fovKick = damp(this.fovKick, 0, 6, dt);
     this.R.post_.speed = clamp(this.fovKick * 7, 0, 1);
-    const fov = 1.05 + this.fovKick + (this.slowT > 0 ? -0.05 : 0);
-    this.R.setCamera(px, py, pz, t[0], t[1], t[2], fov);
+    const fov = 1.05 + this.fovKick + (this.slowT > 0 ? -0.05 : 0) + o.fov * (this.cinematic ? 1 : 0.5);
+    this.R.setCamera(px, py, pz, tx, ty, tz, fov, 0.1, 600, this.cinematic ? o.roll : 0);
     this.camFwd[0] = fx; this.camFwd[1] = fy; this.camFwd[2] = fz;
+    // lens: depth of field on director shots, a soft background blur on the title, letterbox bars
+    const post = this.R.post_;
+    const focus = o.target ? Math.hypot(o.target.x - px, o.target.y - py, o.target.z - pz) : Math.hypot(t[0] - px, t[1] - py, t[2] - pz);
+    post.dof = this.state === 'title' ? 0.3 : o.dof * bl;
+    post.dofFocus = focus;
+    post.dofRange = this.state === 'title' ? 14 : 6;
+    post.letterbox = damp(post.letterbox || 0, this.state === 'dying' ? 1 : o.letterbox * bl, 6, dt);
+    this.audio.setListener(px, py, pz, fx, fy, fz);
   }
 
   pause() {
@@ -1440,6 +1568,17 @@ export class Game {
       }
       const m = b.pts[(b.pts.length / 2) | 0];
       R.light(m[0], m[1], m[2], 8, b.color[0], b.color[1], b.color[2], 2);
+    }
+    this.weather.draw(R);
+    if (R.cine && R.cine.ok) {
+      // the hero and fresh blasts push the fog aside
+      const H = R.cine.holes;
+      let n = 0;
+      const hole = (x, y, z, r) => { if (n >= 8) return; H[n * 4] = x; H[n * 4 + 1] = y; H[n * 4 + 2] = z; H[n * 4 + 3] = r; n++; };
+      const pl = this.player;
+      if (pl.alive) hole(pl.x, pl.y + 1, pl.z, 2.4 + Math.hypot(pl.vx, pl.vz) * 0.15);
+      for (const b of this.blasts) hole(b.x, this.world.height(b.x, b.z) + 1, b.z, b.r * 1.6 * Math.min(1, b.t / 0.3 + 0.4));
+      R.cine.nHoles = n;
     }
     this.particles.update(dt);
     R.render(this.dim.env, rawDt);

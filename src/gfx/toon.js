@@ -40,6 +40,8 @@ const NEON = {
  * mono: manga desaturation (keeps reds); paper: paper grain; ortho: pseudo-3D orthographic camera.
  */
 export const STYLES = {
+  // the default: sourced PBR assets, HDR lighting, volumetrics and weather (see gfx/cinematic.js)
+  cinematic: { id: 'cinematic', name: 'Abyssal Cinematic', cinematic: true, toon: false, models: true, height: 0, cast: 'abyssal', sfx: 'cinematic' },
   retro: { id: 'retro', name: 'Current — Retro Low-Poly', toon: false, height: 432, cast: null, sfx: 'retro' },
   requiem: { ...INK, id: 'requiem', name: 'Pack 1 · Ink Requiem', cast: 'requiem', sfx: 'anime' },
   sutra: { ...MANGA, id: 'sutra', name: 'Pack 2 · Black Sutra', cast: 'sutra', sfx: 'taiko' },
@@ -56,7 +58,7 @@ STYLES.manga = STYLES.sutra;
 STYLES.cutout = STYLES.lantern;
 STYLES.neon = STYLES['requiem+neon'];
 
-export const STYLE_IDS = ['retro', 'requiem', 'sutra', 'lantern', 'requiem+neon', 'sutra+colour', 'requiem+diorama', 'lantern+perspective'];
+export const STYLE_IDS = ['cinematic', 'retro', 'requiem', 'sutra', 'lantern', 'requiem+neon', 'sutra+colour', 'requiem+diorama', 'lantern+perspective'];
 
 const NOISE = `
 float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }

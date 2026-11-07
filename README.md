@@ -1,6 +1,6 @@
 # Abyssal Stride
 
-A third-person hand-drawn anime 3D roguelite set in a cosmic-horror / dark-fantasy abyss. Four-slot arsenal combat with evolving weapons, magic and superpowers, escalating waves, procedural worlds, bosses and a persistent skill tree. Everything is plain JavaScript and WebGL2. There is no engine, no framework, no build step, no assets and no runtime dependencies.
+A cinematic third-person 3D action roguelite set in a cosmic-horror / dark-fantasy abyss. Four-slot arsenal combat with evolving weapons, magic and superpowers, escalating waves, procedural worlds, bosses and a persistent skill tree. Everything is plain JavaScript and WebGL2: no engine, no framework, no build step and no runtime dependencies. The default look, **Abyssal Cinematic**, combines that code with free sourced assets (PBR textures, HDR environments, a skinned character mesh and a sound library, all CC0 or CC BY; see [assets/CREDITS.md](assets/CREDITS.md)).
 
 ## Run it
 
@@ -8,7 +8,9 @@ A third-person hand-drawn anime 3D roguelite set in a cosmic-horror / dark-fanta
 npm start
 ```
 
-Then open <http://localhost:8080>. Any static file server works, since the game is just `index.html` and ES modules. You need a browser with WebGL2 (any current Chrome, Edge, Firefox or Safari).
+Then open <http://localhost:8080>. Any static file server works, since the game is just `index.html`, ES modules and the `assets/` folder. You need a browser with WebGL2 and float render targets (any current Chrome, Edge, Firefox or Safari). Without float targets the game falls back to the Ink Requiem look.
+
+URL options for previews: `?gfx=low|medium|high|ultra` picks the graphics preset, `?style=<id>` picks a pack and `?dim=0..3` starts a run straight in a realm.
 
 ```bash
 npm test
@@ -18,7 +20,7 @@ npm test
 npm run smoke
 ```
 
-`npm test` runs the unit tests for the pure game logic (Node 18+). `npm run smoke` runs a headless Chromium playthrough that writes screenshots to `tools/shots/` and needs Playwright. `node tools/autoplay.mjs 120` is a soak test: a bot plays the game and logs its progress.
+`npm test` runs the unit tests for the pure game logic (Node 18+). `npm run smoke` runs a headless Chromium playthrough that writes screenshots to `tools/shots/` and needs Playwright (it uses the Low preset by default so software rendering keeps up). `node tools/autoplay.mjs 120` is a soak test: a bot plays the game and logs its progress. `node tools/fetch-assets.mjs` re-downloads and re-converts the sourced assets (see the comment at the top of the file).
 
 ## Controls
 
@@ -128,45 +130,121 @@ Each dimension has its own lighting, fog, sky (with a nebula and a watching ecli
 - The scene renders at a low internal resolution with vertex snapping and is upscaled nearest-neighbour.
 - Post-processing adds ordered dithering with colour quantisation, bloom, chromatic aberration, a reality-warp effect, film grain and a vignette.
 
-## Art style: Ink Requiem
+## Art style: Abyssal Cinematic
 
-The game's look is **Ink Requiem**: 90s OVA colour cel shading with black boiling ink lines, drawn on twos, with an anime sound set. It was chosen from three asset packs; the others stay available in **Settings → Art style**, or with `?style=` in the URL, for example `http://localhost:8080/?style=sutra`. Each pack bundles a render style, its own cast of character designs, effects, animation timing, a camera and a sound set.
+The default pack renders the game as a dark-fantasy action title:
+
+**Lighting and materials**
+- A linear HDR pipeline with physically based (GGX) shading.
+- Image-based lighting from real HDR environments (Poly Haven), with spherical-harmonic diffuse and prefiltered reflections, tinted per realm.
+- Soft directional shadows from the eclipse that hangs in every sky.
+- Point lights for fire, magic and lightning.
+- PBR texture sets (Poly Haven / ambientCG) applied triplanar to the terrain and every prop: ash, sand, moon dust and flesh grounds blend into cliff rock on slopes. Bark, ruins, bone, coral, obsidian, forged steel, iron, leather and cloth are textured in object space, so moving props and weapons never swim.
+- Glowing veins in the ground (embers, bioluminescence, void light, pulsing blood).
+- Surfaces react to weather: rain darkens and glosses everything and fills puddles that ripple with every drop, while ash fall settles a grey dust on up-facing surfaces.
+
+**Characters**
+- The hero and humanoid enemies are a skinned mannequin mesh (Quaternius, CC0) driven by the game's own procedural animation. The 28-joint skeleton is retargeted onto the mesh's 53 bones every frame using aim constraints and bone stretch, so every combat clip, IK step and ragdoll still applies, and fingers curl around the grip.
+- Each cast is dressed in PBR materials: a dark iron knight with a hood, mantle, coat tails and glowing joints and eyes, porcelain husk marionettes, flesh brutes with horns, robed choristers, and a bark-skinned shepherd.
+
+**Atmosphere**
+- A half-resolution volumetric fog march, with god rays from the shadow map, scattering from point lights and drifting noise. The hero and every blast push holes in the fog.
+- Screen-space ambient occlusion.
+- Soft, depth-faded particles: additive sparks and embers glow in HDR, and smoke is lit.
+- A painted eclipse sky with a cloud deck, a corona and lightning flashes.
+
+**Weather**
+Each realm cycles through its own states:
+
+| Realm | Weather states |
+| --- | --- |
+| Ashen Hollows | Ash fall, ember storms, dry lightning storms |
+| Drowned Abyss | Rain, thunderstorms, mist |
+| Starless Veil | Void snow, starfall with meteor impacts |
+| Flesh Cathedral | Blood rain, spore fog |
+
+- Precipitation is a GPU particle field around the camera.
+- Wind veers and gusts, bending the dense foliage in rolling waves.
+- Lightning lights the whole scene, scorches the ground where it strikes, and its thunder arrives after the flash.
+- Flocks of crows, glowing fish, void moths or carrion flies settle around you and scatter at sprints, blasts and thunder.
+
+**Camera**
+A director layers several effects over the gameplay camera:
+- Trauma-based rotational shake, FOV punches and dutch-angle kicks on heavy hits.
+- Slow-motion finisher orbits with shallow depth of field and letterbox on elite and last-enemy kills.
+- A low letterboxed orbit when a guardian is introduced, and long pull-backs for boss and hero deaths.
+
+**Post-processing**
+- Physically based bloom with lens dirt, and depth of field.
+- ACES filmic tonemapping with per-realm grading (lift, gamma, gain and split toning).
+- Chromatic aberration, radial speed blur, vignette, film grain, a low-health pulse and FXAA.
+- Smooth HDR ribbon trails follow the blade.
+
+**Sound**
+- Layered, randomised samples (Oculus Audio Pack, CC BY 4.0, and sfx-kit, CC0): flesh, bone, steel, cloth, voices, creatures, footsteps by surface, thunder, rain and wind.
+- Placed in 3D with HRTF panning and sent through a per-realm convolution reverb.
+- Ducked under big impacts, and muffled in slow motion and at low health.
+- An adaptive score (drone bed, creepy strings and organ swells, war drums, low ostinato, and a boss choir) rises and falls with the fight.
+
+**Interface**
+The HUD and menus are minimal and engraved:
+- Hairline vitals at the bottom left and circular ability slots at the bottom right.
+- A single objective line, and secondary information that recedes when nothing is happening.
+- Serif damage numerals, quiet edge-clamped markers and a thin lock-on reticle.
+
+Menus support keyboard and gamepad navigation with focus descriptions. Settings are tabbed (Video, Audio, Camera & Controls) and can restore defaults. There are Controls and Credits screens, and the pause screen shows run stats and asks for confirmation before abandoning a run.
+
+**Graphics presets** (Settings → Video, or `?gfx=`)
+
+| Preset | Render scale | Shadows | Fog steps | SSAO | Extras |
+| --- | --- | --- | --- | --- | --- |
+| Low | 60% | 1024 | 12 | No | — |
+| Medium | 75% | 2048 | 18 | Yes | Depth of field |
+| High (default) | 90% | 2048 | 26 | Yes | Fog lights, denser foliage |
+| Ultra | 100% | 4096 | 36 | Yes | All of the above |
+
+Assets stream in while the title screen runs. Anything that fails to load falls back to the procedural version.
+
+## Hand-drawn packs
+
+The earlier looks stay available in **Settings → Video → Art style**, or with `?style=`.
 
 | Pack | Id | Render | Cast | Camera and timing | Sound |
 | --- | --- | --- | --- | --- | --- |
+| **Abyssal Cinematic (default)** | `cinematic` | HDR PBR, volumetrics, weather | Skinned mannequins | Perspective, full frame rate, director shots | Sampled, adaptive score |
 | Original | `retro` | Smooth lighting, dithered, no outlines | Stick figures | Perspective, full frame rate | Retro synth |
-| **1 · Ink Requiem (default)** | `requiem` | 90s OVA colour cel, black boiling ink | Silver-haired swordsman in an indigo long coat | Perspective, on twos | Anime: shings, bells, sparkles |
+| 1 · Ink Requiem | `requiem` | 90s OVA colour cel, black boiling ink | Silver-haired swordsman in an indigo long coat | Perspective, on twos | Anime: shings, bells, sparkles |
 | 2 · Black Sutra | `sutra` | Monochrome manga screentone, red survives | Ponytailed swordswoman, talisman ghouls, oni brute | Perspective, on twos | Taiko: drums, clacks, flute, chimes |
 | 3 · Paper Lantern | `lantern` | Storybook cut-out, thick brush lines, hatching | Button-eyed lantern bearer, rag dolls, paper ghosts | Pseudo-3D orthographic diorama, on threes | Folk: woodblocks, music box, kalimba |
 
 Combinations: `requiem+neon`, `sutra+colour`, `requiem+diorama`, `lantern+perspective`.
 
-The HUD and menus are drawn in the same anime style, entirely in CSS, inline SVG and canvas code with system fonts. They include ink-outlined slanted panels, screentone, speed lines and starbursts. The hero portrait changes its face when you are hit or low on health. Damage numbers overshoot into place. Title cards slam in letter by letter, and boss warnings come with hazard tape. Transitions are an ink wipe. The colours follow the active pack, and animation respects `prefers-reduced-motion`.
+The hand-drawn packs share the same character tech:
 
-All hand-drawn packs share the same character tech:
+- **Models.** The 16-joint pose drives a 28-joint skeleton with a curved spine, clavicles, a lagging head, wrists, thumbs, heels and rolling toes. Hair, coat tails and robes run on physics chains.
+- **Ink pass.** Depth and normal edges become outlines that re-trace a few times a second ("line boil").
+- **Impact frames and speed lines** on decisive hits and sprints.
 
-- **Models.** The 16-joint pose drives a 28-joint skeleton: a curved three-segment spine, clavicles, a lagging head, wrists and hand tips with follow-through, thumbs, heels and rolling toes. Each cast's designs are skinned onto it with faces, hair and clothing. Hair, coat tails, sashes and robes run on physics chains. Other creatures get fleshed-out volumes over their rigs.
-- **Ink pass.** Depth and normal edges from a G-buffer become outlines that re-trace a few times a second ("line boil").
-- **Cel effects and sky.** Effects are flat painted shapes, and the sky is banded with painted clouds.
-- **Impact frames and speed lines.** Two-tone impact frames fire on evolutions, stopped time, guardian deaths and big hits, and speed lines appear while sprinting.
-
-`node tools/previz.mjs <id>` replays the same seeded scenes in one pack and saves stills, a model sheet and a combat clip. It needs Playwright.
-
-Everything is generated in code. The project uses no downloaded models, textures, fonts or sounds.
+Their HUD and menus are drawn in CSS, inline SVG and canvas code in a matching anime style. `node tools/previz.mjs <id>` replays seeded scenes in one pack and saves stills (needs Playwright).
 
 ## Architecture
 
 ```
 src/
-  core/   math (column-major mat4, TRS/segment writers), seeded RNG, noise, spatial hash, input (+gamepad), WebAudio synth
-  gfx/    WebGL2 renderer (instanced primitive batches, terrain, quads/decals, sky, bloom, post), toon/ink shaders + style presets, meshes, particle pools
+  core/   math (column-major mat4, TRS/segment writers), seeded RNG, noise, spatial hash, input (+gamepad), WebAudio synth,
+          asset loader (assets.js), sampled soundscape with reverb, 3D panning and adaptive score (soundscape.js)
+  gfx/    WebGL2 renderer (instanced primitive batches, terrain, quads/decals, sky, bloom, post), toon/ink shaders + style presets, meshes, particle pools,
+          cinematic shaders + realm looks + quality presets (cinematic.js), the cinematic frame (cinepipe.js), skinned mannequin retarget (skinned.js),
+          PBR material ids (materials.js)
   game/   game loop/orchestrator, player controller, humanoid solver + clips, anatomy (expanded skeleton + skinned bodies), legged locomotion, rig + ragdolls,
-          enemies, bosses, abilities, spawner, world generation, dimensions, weapons, upgrades table, meta skill tree
-  ui/     DOM HUD + 2D overlay (damage numbers, markers, prompts), level-up cards, menus, skill tree
+          enemies, bosses, abilities, spawner, world generation, dimensions, weapons, upgrades table, meta skill tree,
+          weather + critters (weather.js), camera director (director.js), ribbon trails (trails.js)
+  ui/     DOM HUD + 2D overlay (damage numbers, markers, prompts), level-up cards, menus with keyboard/gamepad navigation, skill tree
+assets/   sourced textures, HDRIs, mannequin mesh and sound banks + CREDITS.md (fetched and converted by tools/fetch-assets.mjs)
 ```
 
 **Performance**
-- All geometry is built from a handful of low-poly primitives (box, sphere, cylinder, cone, octahedron, orb) drawn as **instanced batches**, about 7 draw calls for every creature, weapon and prop.
+- All props and creatures other than the mannequins are built from a handful of low-poly primitives (box, sphere, cylinder, cone, octahedron, orb) drawn as **instanced batches**, about 7 draw calls for every creature, weapon and prop, with per-instance PBR material ids. All mannequins share one bone texture.
 - Static props are uploaded once. Destroyed props are hidden by zeroing their instance slot.
 - Particles live in structure-of-arrays pools that don't allocate each frame.
 - Neighbour queries go through a spatial hash.
