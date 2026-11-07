@@ -5,6 +5,8 @@ import { audio } from './core/audio.js';
 import { Meta, DEFAULT_STYLE } from './game/meta.js';
 import { UI } from './ui/ui.js';
 import { Game } from './game/game.js';
+import { loadAssets } from './core/assets.js';
+import { QUALITY } from './gfx/cinematic.js';
 
 function fatal(msg) {
   const el = document.getElementById('fatal');
@@ -24,6 +26,8 @@ function boot() {
   }
   const meta = new Meta();
   R.setQuality(meta.data.settings.quality);
+  const gfx = new URLSearchParams(location.search).get('gfx') || meta.data.settings.graphics || 'high';
+  R.gfx = gfx;
   audio.setVolume(meta.data.settings.volume);
   const input = new Input(canvas);
   const ui = new UI(meta, audio);
@@ -33,7 +37,25 @@ function boot() {
   const urlStyle = (new URLSearchParams(location.search).get('style') || '').replace(/ /g, '+');
   game.setStyle(urlStyle || meta.data.settings.style || DEFAULT_STYLE);
   ui.bind(game);
+  // previews: ?dim=N starts a run directly in dimension N (0 Ashen, 1 Drowned, 2 Starless, 3 Flesh)
+  const dimParam = new URLSearchParams(location.search).get('dim');
+  if (dimParam !== null) {
+    ui.showMenu(false);
+    game.startRun();
+    if (+dimParam) game.enterDimension(+dimParam % 4, 'open');
+  }
   window.__game = game; // handy for debugging / automated smoke tests
+
+  // sourced assets (textures, HDRIs, mannequin, sound banks) stream in while the title screen runs
+  const bar = document.getElementById('loading');
+  const setBar = (k) => { if (bar) { bar.style.setProperty('--k', k.toFixed(3)); bar.dataset.pct = Math.round(k * 100); } };
+  window.__assets = loadAssets(setBar, { textureSize: (QUALITY[gfx] || QUALITY.high).texSize }).then((a) => {
+    R.attachAssets(a, (QUALITY[gfx] || QUALITY.high).texSize);
+    audio.attachSamples(a.audio);
+    if (bar) bar.classList.add('done');
+    if (a.errors.length) console.warn('Some assets failed to load:', a.errors);
+    return a;
+  });
 
   // pause when pointer lock is lost mid-run (e.g. Esc in the browser)
   let hadLock = false;

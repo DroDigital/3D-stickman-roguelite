@@ -1,0 +1,288 @@
+{
+ "version": 1,
+ "materials": [
+  "ash_ground",
+  "ash_rock",
+  "sea_ground",
+  "sea_rock",
+  "void_ground",
+  "void_rock",
+  "flesh_ground",
+  "flesh_rock",
+  "bark",
+  "ruin",
+  "steel",
+  "iron",
+  "cloth",
+  "leather",
+  "bone",
+  "coral",
+  "obsidian",
+  "flesh"
+ ],
+ "hdri": [
+  "dusk",
+  "overcast",
+  "night",
+  "blood"
+ ],
+ "model": "models/mannequin",
+ "audio": {
+  "swoosh": [
+   "swoosh_0.mp3",
+   "swoosh_1.mp3",
+   "swoosh_2.mp3",
+   "swoosh_3.mp3",
+   "swoosh_4.mp3",
+   "swoosh_5.mp3"
+  ],
+  "whooshSmall": [
+   "whooshSmall_0.mp3",
+   "whooshSmall_1.mp3",
+   "whooshSmall_2.mp3"
+  ],
+  "whooshHeavy": [
+   "whooshHeavy_0.mp3",
+   "whooshHeavy_1.mp3",
+   "whooshHeavy_2.mp3",
+   "whooshHeavy_3.mp3"
+  ],
+  "flesh": [
+   "flesh_0.mp3",
+   "flesh_1.mp3",
+   "flesh_2.mp3",
+   "flesh_3.mp3"
+  ],
+  "punch": [
+   "punch_0.mp3",
+   "punch_1.mp3",
+   "punch_2.mp3",
+   "punch_3.mp3",
+   "punch_4.mp3",
+   "punch_5.mp3"
+  ],
+  "punchHeavy": [
+   "punchHeavy_0.mp3",
+   "punchHeavy_1.mp3",
+   "punchHeavy_2.mp3"
+  ],
+  "bones": [
+   "bones_0.mp3",
+   "bones_1.mp3",
+   "bones_2.mp3",
+   "bones_3.mp3"
+  ],
+  "sword": [
+   "sword_0.mp3",
+   "sword_1.mp3"
+  ],
+  "clash": [
+   "clash_0.mp3",
+   "clash_1.mp3"
+  ],
+  "cloth": [
+   "cloth_0.mp3",
+   "cloth_1.mp3",
+   "cloth_2.mp3",
+   "cloth_3.mp3"
+  ],
+  "heroHurt": [
+   "heroHurt_0.mp3",
+   "heroHurt_1.mp3",
+   "heroHurt_2.mp3"
+  ],
+  "heroEffort": [
+   "heroEffort_0.mp3",
+   "heroEffort_1.mp3"
+  ],
+  "heroDeath": [
+   "heroDeath_0.mp3"
+  ],
+  "creatureHurt": [
+   "creatureHurt_0.mp3",
+   "creatureHurt_1.mp3",
+   "creatureHurt_2.mp3",
+   "creatureHurt_3.mp3",
+   "creatureHurt_4.mp3"
+  ],
+  "creatureDeath": [
+   "creatureDeath_0.mp3",
+   "creatureDeath_1.mp3",
+   "creatureDeath_2.mp3",
+   "creatureDeath_3.mp3"
+  ],
+  "creepy": [
+   "creepy_0.mp3",
+   "creepy_1.mp3",
+   "creepy_2.mp3",
+   "creepy_3.mp3"
+  ],
+  "roar": [
+   "roar_0.mp3",
+   "roar_1.mp3",
+   "roar_2.mp3"
+  ],
+  "laugh": [
+   "laugh_0.mp3",
+   "laugh_1.mp3"
+  ],
+  "whispers": [
+   "whispers_0.mp3"
+  ],
+  "chains": [
+   "chains_0.mp3",
+   "chains_1.mp3"
+  ],
+  "scrape": [
+   "scrape_0.mp3",
+   "scrape_1.mp3"
+  ],
+  "creepyImpact": [
+   "creepyImpact_0.mp3",
+   "creepyImpact_1.mp3",
+   "creepyImpact_2.mp3"
+  ],
+  "drone": [
+   "drone_0.mp3",
+   "drone_1.mp3"
+  ],
+  "strings": [
+   "strings_0.mp3",
+   "strings_1.mp3"
+  ],
+  "organ": [
+   "organ_0.mp3"
+  ],
+  "magic": [
+   "magic_0.mp3",
+   "magic_1.mp3"
+  ],
+  "metal": [
+   "metal_0.mp3",
+   "metal_1.mp3",
+   "metal_2.mp3"
+  ],
+  "stepDirt": [
+   "stepDirt_0.mp3",
+   "stepDirt_1.mp3",
+   "stepDirt_2.mp3",
+   "stepDirt_3.mp3",
+   "stepDirt_4.mp3"
+  ],
+  "stepGrass": [
+   "stepGrass_0.mp3",
+   "stepGrass_1.mp3",
+   "stepGrass_2.mp3",
+   "stepGrass_3.mp3",
+   "stepGrass_4.mp3"
+  ],
+  "stepSnow": [
+   "stepSnow_0.mp3",
+   "stepSnow_1.mp3",
+   "stepSnow_2.mp3",
+   "stepSnow_3.mp3"
+  ],
+  "land": [
+   "land_0.mp3",
+   "land_1.mp3"
+  ],
+  "levelup": [
+   "levelup_0.mp3",
+   "levelup_1.mp3"
+  ],
+  "victory": [
+   "victory_0.mp3"
+  ],
+  "loss": [
+   "loss_0.mp3"
+  ],
+  "ambNight": [
+   "ambNight_0.mp3"
+  ],
+  "ambUnderwater": [
+   "ambUnderwater_0.mp3"
+  ],
+  "ambBubbles": [
+   "ambBubbles_0.mp3"
+  ],
+  "rain": [
+   "rain_0.mp3"
+  ],
+  "wind": [
+   "wind_0.mp3"
+  ],
+  "thunder": [
+   "thunder_0.mp3",
+   "thunder_1.mp3"
+  ],
+  "boom": [
+   "boom_0.mp3",
+   "boom_1.mp3",
+   "boom_2.mp3"
+  ],
+  "rumble": [
+   "rumble_0.mp3",
+   "rumble_1.mp3"
+  ],
+  "subDrop": [
+   "subDrop_0.mp3",
+   "subDrop_1.mp3"
+  ],
+  "cineDrum": [
+   "cineDrum_0.mp3",
+   "cineDrum_1.mp3"
+  ],
+  "cineMetal": [
+   "cineMetal_0.mp3",
+   "cineMetal_1.mp3"
+  ],
+  "cineSlam": [
+   "cineSlam_0.mp3",
+   "cineSlam_1.mp3"
+  ],
+  "impact": [
+   "impact_0.mp3",
+   "impact_1.mp3",
+   "impact_2.mp3"
+  ],
+  "riser": [
+   "riser_0.mp3",
+   "riser_1.mp3"
+  ],
+  "reverse": [
+   "reverse_0.mp3",
+   "reverse_1.mp3",
+   "reverse_2.mp3"
+  ],
+  "shimmer": [
+   "shimmer_0.mp3",
+   "shimmer_1.mp3",
+   "shimmer_2.mp3"
+  ],
+  "coin": [
+   "coin_0.mp3",
+   "coin_1.mp3"
+  ],
+  "lock": [
+   "lock_0.mp3",
+   "lock_1.mp3"
+  ],
+  "uiTap": [
+   "uiTap_0.mp3",
+   "uiTap_1.mp3"
+  ],
+  "materialise": [
+   "materialise_0.mp3",
+   "materialise_1.mp3",
+   "materialise_2.mp3"
+  ]
+ },
+ "loops": [
+  "ambNight",
+  "ambUnderwater",
+  "ambBubbles",
+  "rain",
+  "wind",
+  "drone"
+ ]
+}

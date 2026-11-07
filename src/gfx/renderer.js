@@ -1,11 +1,13 @@
 // WebGL2 forward renderer: instanced primitive batches, terrain, particles/decals, sky and retro post-processing.
 import * as S from './shaders.js';
 import * as T from './toon.js';
+import { CinePipe } from './cinepipe.js';
+import { LOOKS } from './cinematic.js';
 import { boxMesh, icoSphereMesh, cylinderMesh, coneMesh, octaMesh, foliageMesh } from './meshes.js';
 import { mat4Perspective, mat4Ortho, mat4LookAt, mat4Mul, writeSegment, writeTRS } from '../core/math.js';
 
 export const PRIM = { BOX: 0, SPHERE: 1, CYL: 2, CONE: 3, OCTA: 4, ORB: 5, BALL: 6 };
-const INST_FLOATS = 20;
+const INST_FLOATS = 24; // mat4, rgb + emissive, material (layer, roughness, metalness, texture scale)
 const QUAD_FLOATS = 12;
 
 function compile(gl, type, src) {
@@ -39,6 +41,8 @@ class Program {
   use() { this.gl.useProgram(this.p); return this; }
 }
 
+export { Program };
+
 class InstanceBatch {
   constructor(gl, meshData, capacity, usage) {
     this.gl = gl;
@@ -60,7 +64,7 @@ class InstanceBatch {
     this.instBuf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instBuf);
     gl.bufferData(gl.ARRAY_BUFFER, this.data.byteLength, usage);
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       gl.enableVertexAttribArray(3 + i);
       gl.vertexAttribPointer(3 + i, 4, gl.FLOAT, false, INST_FLOATS * 4, i * 16);
       gl.vertexAttribDivisor(3 + i, 1);
@@ -216,6 +220,12 @@ export class Renderer {
     this.ortho = false;
     this.orthoSize = 11;
     this.emptyVao = gl.createVertexArray();
+    this.Program = Program;
+    this.matState = new Float32Array([-1, -1, -1, 0]);
+    this.cine = null;
+    this.look = LOOKS.ashen;
+    this.near = 0.1;
+    this.far = 600;
 
     // low vertex counts keep the instanced batches cheap even on integrated GPUs
     const meshes = [boxMesh(), icoSphereMesh(1, true), cylinderMesh(6, false), coneMesh(6), octaMesh(), icoSphereMesh(1, false), icoSphereMesh(0, false)];
@@ -252,7 +262,14 @@ export class Renderer {
 
   /** Switch art style preset (see gfx/toon.js). Returns the active preset. */
   setStyle(id) {
-    const st = T.STYLES[id] || T.STYLES.requiem;
+    let st = T.STYLES[id] || T.STYLES.cinematic;
+    if (st.cinematic) {
+      if (!this.cine) {
+        try { this.cine = new CinePipe(this); } catch (e) { console.warn('cinematic pipeline unavailable', e); this.cine = { ok: false }; }
+      }
+      // no float render targets (very old GPUs): fall back to the hand-drawn look
+      if (!this.cine.ok) st = T.STYLES.requiem;
+    }
     this.style = st;
     this.snap = !st.toon;
     this.levels = st.toon ? 0 : 28;
@@ -296,10 +313,19 @@ export class Renderer {
   get lowW() { return this.scene.w; }
   get lowH() { return this.scene.h; }
 
-  setCamera(px, py, pz, tx, ty, tz, fov, near = 0.1, far = 600) {
+  setCamera(px, py, pz, tx, ty, tz, fov, near = 0.1, far = 600, roll = 0) {
     this.fov = fov;
+    this.near = near; this.far = far;
     this.camPos[0] = px; this.camPos[1] = py; this.camPos[2] = pz;
-    mat4LookAt(this.view, px, py, pz, tx, ty, tz);
+    if (roll) {
+      // dutch angle: tilt the up vector around the view axis
+      let fx = tx - px, fy = ty - py, fz = tz - pz;
+      const fl = Math.hypot(fx, fy, fz) || 1; fx /= fl; fy /= fl; fz /= fl;
+      let rx = fz, rz = -fx; const rl = Math.hypot(rx, rz) || 1; rx /= rl; rz /= rl; // right = fwd x up (y-up)
+      const c = Math.cos(roll), s = Math.sin(roll);
+      const ux = -rx * s, uy = c, uz = -rz * s;
+      mat4LookAt(this.view, px, py, pz, tx, ty, tz, ux, uy, uz);
+    } else mat4LookAt(this.view, px, py, pz, tx, ty, tz);
     if (this.ortho) {
       const hh = this.orthoSize;
       mat4Ortho(this.proj, hh * this.aspect, hh, near, far);
@@ -427,6 +453,7 @@ export class Renderer {
     const o = b.alloc();
     writeTRS(b.data, o, x, y, z, yaw, pitch, roll, sx, sy, sz);
     b.data[o + 16] = c[0]; b.data[o + 17] = c[1]; b.data[o + 18] = c[2]; b.data[o + 19] = e;
+    this._mat(b.data, o);
     return { kind, index: o / INST_FLOATS };
   }
 
@@ -435,6 +462,7 @@ export class Renderer {
     const o = b.alloc();
     writeSegment(b.data, o, ax, ay, az, bx, by, bz, r);
     b.data[o + 16] = c[0]; b.data[o + 17] = c[1]; b.data[o + 18] = c[2]; b.data[o + 19] = e;
+    this._mat(b.data, o);
     return { kind: PRIM.CYL, index: o / INST_FLOATS };
   }
 
@@ -455,6 +483,7 @@ export class Renderer {
     const o = b.alloc();
     writeTRS(b.data, o, x, y, z, yaw, pitch, roll, sx, sy, sz);
     b.data[o + 16] = c[0]; b.data[o + 17] = c[1]; b.data[o + 18] = c[2]; b.data[o + 19] = e;
+    this._mat(b.data, o);
   }
 
   seg(ax, ay, az, bx, by, bz, r, c, e = 0) {
@@ -462,6 +491,7 @@ export class Renderer {
     const o = b.alloc();
     writeSegment(b.data, o, ax, ay, az, bx, by, bz, r);
     b.data[o + 16] = c[0]; b.data[o + 17] = c[1]; b.data[o + 18] = c[2]; b.data[o + 19] = e;
+    this._mat(b.data, o);
   }
 
   /** Oriented primitive along a segment (e.g. a cone or blade from a to b). */
@@ -478,6 +508,7 @@ export class Renderer {
       if (kind === PRIM.BOX) { d[o + 4] *= 2; d[o + 5] *= 2; d[o + 6] *= 2; d[o + 0] *= 2; d[o + 1] *= 2; d[o + 2] *= 2; d[o + 8] *= 2; d[o + 9] *= 2; d[o + 10] *= 2; }
     }
     b.data[o + 16] = c[0]; b.data[o + 17] = c[1]; b.data[o + 18] = c[2]; b.data[o + 19] = e;
+    this._mat(b.data, o);
   }
 
   /** Primitive centred at (cx,cy,cz) with explicit (already scaled) local X/Y/Z axes — for oriented body volumes. */
@@ -490,6 +521,22 @@ export class Renderer {
     d[o + 8] = Z[0]; d[o + 9] = Z[1]; d[o + 10] = Z[2]; d[o + 11] = 0;
     d[o + 12] = cx; d[o + 13] = cy; d[o + 14] = cz; d[o + 15] = 1;
     d[o + 16] = c[0]; d[o + 17] = c[1]; d[o + 18] = c[2]; d[o + 19] = e;
+    this._mat(d, o);
+  }
+
+  /**
+   * PBR material for the primitives drawn next (cinematic style): layer from gfx/materials.js MAT, optional
+   * roughness/metalness overrides (-1 = from the texture) and texture scale (tiles per metre). Call with no
+   * arguments to reset to plain untextured surfaces.
+   */
+  setMat(id = -1, rough = -1, metal = -1, scale = 0) {
+    const m = this.matState;
+    m[0] = id; m[1] = rough; m[2] = metal; m[3] = scale;
+  }
+
+  _mat(d, o) {
+    const m = this.matState;
+    d[o + 20] = m[0]; d[o + 21] = m[1]; d[o + 22] = m[2]; d[o + 23] = m[3];
   }
 
   ball(x, y, z, r, c, e = 0, smooth = false) {
@@ -522,6 +569,8 @@ export class Renderer {
   }
 
   beginFrame() {
+    if (this.cine && this.cine.mannequin) this.cine.mannequin.beginFrame();
+    this.setMat();
     for (const b of this.dyn) b.count = 0;
     this.alphaQuads.count = 0;
     this.addQuads.count = 0;
@@ -551,8 +600,24 @@ export class Renderer {
     return m;
   }
 
+  /** Upload sourced assets for the cinematic pipeline. */
+  attachAssets(assets, texSize) {
+    if (!this.cine) {
+      try { this.cine = new CinePipe(this); } catch (e) { console.warn(e); this.cine = { ok: false }; }
+    }
+    if (this.cine.ok) this.cine.attach(assets, texSize);
+  }
+
+  /** Skinned mannequin for character bodies (cinematic style with the model loaded), else null. */
+  get mannequin() { return this.style.cinematic && this.cine && this.cine.ok ? this.cine.mannequin : null; }
+
   render(env, dt) {
     const gl = this.gl;
+    if (this.style.cinematic && this.cine && this.cine.ok) {
+      this.time += dt;
+      this.cine.render(env, dt);
+      return;
+    }
     this.time += dt;
     const env_ = env;
     const sc = this.scene;

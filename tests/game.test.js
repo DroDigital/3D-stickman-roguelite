@@ -328,11 +328,12 @@ test('anatomy expands the 16-joint pose into a stable 28-joint skeleton with set
   }
 });
 
-test('Ink Requiem is the default art style; old saves move to it unless the player picked a style', () => {
+test('Abyssal Cinematic is the default art style; old saves move to it once, later choices are kept', () => {
   const mem = (data) => { const m = new Map(data ? [['k', JSON.stringify(data)]] : []); return { getItem: () => (m.has('k') ? m.get('k') : null), setItem: (_, v) => m.set('k', v) }; };
-  assert.equal(new Meta(mem()).data.settings.style, 'requiem');
-  // a save from before the art direction was chosen stored the old default
-  assert.equal(new Meta(mem({ settings: { style: 'retro' } })).data.settings.style, 'requiem');
-  // an explicit choice is kept
-  assert.equal(new Meta(mem({ settings: { style: 'retro', styleChosen: true } })).data.settings.style, 'retro');
+  assert.equal(new Meta(mem()).data.settings.style, 'cinematic');
+  // saves from before the overhaul move to the new look, even if they had picked a pack
+  assert.equal(new Meta(mem({ settings: { style: 'retro' } })).data.settings.style, 'cinematic');
+  assert.equal(new Meta(mem({ settings: { style: 'requiem', styleChosen: true } })).data.settings.style, 'cinematic');
+  // a choice made after the overhaul is kept
+  assert.equal(new Meta(mem({ settings: { style: 'retro', styleChosen: true, lookVersion: 2 } })).data.settings.style, 'retro');
 });

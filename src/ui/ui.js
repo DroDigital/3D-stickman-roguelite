@@ -51,7 +51,33 @@ export class UI {
     $('#btn-settings').onclick = () => { this.audio.init(); this.audio.play('ui'); this.showSettings(true); };
     $('#btn-resume').onclick = () => game.resume();
     $('#btn-pause-settings').onclick = () => this.showSettings(true);
-    $('#btn-abandon').onclick = () => { this.showPause(false); game.abandonRun(); };
+    $('#btn-controls').onclick = () => { this.audio.init(); this.audio.play('ui'); this.showScreen('controls', true); };
+    $('#btn-pause-controls').onclick = () => { this.audio.play('ui'); this.showScreen('controls', true); };
+    $('#btn-credits').onclick = () => { this.audio.init(); this.audio.play('ui'); this.showScreen('credits', true); };
+    document.querySelectorAll('[data-back]').forEach((b) => { b.onclick = () => { this.audio.play('ui'); this.back(); }; });
+    // abandoning a run asks once more before it throws the run away
+    const ab = $('#btn-abandon');
+    ab.onclick = () => {
+      if (!this._abandonArmed) {
+        this._abandonArmed = true;
+        ab.textContent = 'Confirm — abandon this run?';
+        clearTimeout(this._abandonT);
+        this._abandonT = setTimeout(() => { this._abandonArmed = false; ab.textContent = 'Abandon Run'; }, 3500);
+        return;
+      }
+      this._abandonArmed = false; ab.textContent = 'Abandon Run';
+      this.showPause(false); game.abandonRun();
+    };
+    // settings tabs
+    document.querySelectorAll('#settings .tab').forEach((t) => {
+      t.onclick = () => {
+        this.audio.play('ui');
+        document.querySelectorAll('#settings .tab').forEach((o) => o.classList.toggle('on', o === t));
+        document.querySelectorAll('#settings .tab-page').forEach((pg) => pg.classList.toggle('hidden', pg.dataset.page !== t.dataset.tab));
+      };
+    });
+    this._initNav();
+    if (!this.el.menu.classList.contains('hidden')) this._autoFocus(this.el.menu);
     $('#btn-again').onclick = () => { this.el.gameover.classList.add('hidden'); game.input.requestLock(); game.transitionTo(() => game.startRun()); };
     $('#btn-go-tree').onclick = () => { this.el.gameover.classList.add('hidden'); this.showTree(true, true); };
     $('#btn-go-menu').onclick = () => { this.el.gameover.classList.add('hidden'); this.toTitle(); };
@@ -69,12 +95,31 @@ export class UI {
     const st = this.meta.data.settings;
     q.value = String(st.quality); v.value = String(st.volume); s.value = String(st.sensitivity); sh.value = String(st.shake);
     q.onchange = () => { st.quality = Number(q.value); if (!game.style || !game.style.toon) game.R.setQuality(st.quality); this.meta.save(); };
+    const gfx = $('#set-gfx'), mu = $('#set-music');
+    if (gfx) {
+      gfx.value = st.graphics || 'high';
+      gfx.onchange = () => { st.graphics = gfx.value; game.R.gfx = gfx.value; if (game.R.cine && game.R.cine.ok) game.R.cine.setQuality(gfx.value); this.meta.save(); };
+    }
+    if (mu) {
+      mu.value = String(st.music ?? 0.7);
+      mu.oninput = () => { st.music = Number(mu.value); this.meta.save(); };
+    }
     const sty = $('#set-style');
-    sty.value = game.style ? game.style.id : 'requiem';
+    sty.value = game.style ? game.style.id : 'cinematic';
     sty.onchange = () => { st.style = sty.value; st.styleChosen = true; game.setStyle(st.style); this.meta.save(); };
     v.oninput = () => { st.volume = Number(v.value); this.audio.setVolume(st.volume); this.meta.save(); };
     s.oninput = () => { st.sensitivity = Number(s.value); this.meta.save(); };
     sh.oninput = () => { st.shake = Number(sh.value); this.meta.save(); };
+    const rs = $('#settings-reset');
+    if (rs) rs.onclick = () => {
+      Object.assign(st, { graphics: 'high', volume: 0.6, music: 0.7, sensitivity: 1, shake: 1, lockAssist: 1, lockFlick: 1 });
+      this.audio.setVolume(st.volume);
+      game.R.gfx = 'high';
+      if (game.R.cine && game.R.cine.ok) game.R.cine.setQuality('high');
+      this.meta.save();
+      for (const [sel, v] of [['#set-gfx', 'high'], ['#set-volume', 0.6], ['#set-music', 0.7], ['#set-sens', 1], ['#set-shake', 1], ['#set-lock', 1], ['#set-flick', 1]]) { const el = $(sel); if (el) el.value = String(v); }
+      this.audio.play('select');
+    };
     const lk = $('#set-lock'), fl = $('#set-flick');
     lk.value = String(st.lockAssist ?? 1); fl.value = String(st.lockFlick ?? 1);
     lk.oninput = () => { st.lockAssist = Number(lk.value); this.meta.save(); };
@@ -82,9 +127,115 @@ export class UI {
     this.updateMenuStats();
   }
 
+  // ------------------------------------------------------------ menu navigation (keyboard + gamepad)
+  /** The top-most open screen, which owns focus and the Back action. */
+  _activeScreen() {
+    for (const id of ['settings', 'credits', 'controls', 'tree', 'offers', 'gameover', 'pause', 'menu']) {
+      const el = document.getElementById(id);
+      if (el && !el.classList.contains('hidden')) return el;
+    }
+    return null;
+  }
+
+  _focusables(scr) {
+    return [...scr.querySelectorAll('button, select, input, .card')].filter((el) => !el.disabled && el.offsetParent !== null && !el.closest('.hidden'));
+  }
+
+  _move(dir) {
+    const scr = this._activeScreen();
+    if (!scr) return;
+    const list = this._focusables(scr);
+    if (!list.length) return;
+    const i = list.indexOf(document.activeElement);
+    const next = list[(i < 0 ? 0 : i + dir + list.length) % list.length];
+    next.focus({ preventScroll: true });
+    this.audio.play('ui', 0.4);
+  }
+
+  /** Back out of the current screen (Esc / B / Back buttons). */
+  back() {
+    const scr = this._activeScreen();
+    if (!scr) return false;
+    const id = scr.id;
+    if (id === 'settings') { this.showSettings(false); return true; }
+    if (id === 'controls' || id === 'credits') { this.showScreen(id, false); return true; }
+    if (id === 'tree') { $('#tree-close').click(); return true; }
+    return false;
+  }
+
+  showScreen(id, on) {
+    const el = document.getElementById(id);
+    el.classList.toggle('hidden', !on);
+    if (on) this._autoFocus(el);
+    else { const s = this._activeScreen(); if (s) this._autoFocus(s); }
+  }
+
+  _autoFocus(scr) {
+    if (typeof requestAnimationFrame === 'undefined') return;
+    requestAnimationFrame(() => {
+      if (scr.classList.contains('hidden')) return;
+      const list = this._focusables(scr);
+      if (list.length && !scr.contains(document.activeElement)) list[0].focus({ preventScroll: true });
+    });
+  }
+
+  _initNav() {
+    if (typeof document === 'undefined') return;
+    document.addEventListener('keydown', (ev) => {
+      const g = this.game;
+      if (!g || g.state === 'play') return;
+      const scr = this._activeScreen();
+      if (!scr) return;
+      const tag = document.activeElement && document.activeElement.tagName;
+      const vertical = { ArrowDown: 1, ArrowUp: -1 }[ev.key];
+      const horizontal = { ArrowRight: 1, ArrowLeft: -1 }[ev.key];
+      // dropdowns keep their own arrow keys; sliders keep left/right
+      if (vertical && tag !== 'SELECT') { ev.preventDefault(); this._move(vertical); return; }
+      if (horizontal && scr.id === 'offers') { ev.preventDefault(); this._move(horizontal); return; }
+      if (ev.key === 'Escape' && g.state !== 'paused' && this.back()) ev.preventDefault();
+    });
+    // describe the focused / hovered main-menu entry
+    const desc = $('#menu-desc');
+    document.querySelectorAll('#menu [data-desc]').forEach((b) => {
+      const show = () => { if (desc) desc.textContent = b.dataset.desc; };
+      b.addEventListener('focus', show);
+      b.addEventListener('mouseenter', () => { show(); this.audio.play('ui', 0.3); });
+    });
+    this._pad = { t: 0, prev: [] };
+  }
+
+  /** Gamepad menu navigation: D-pad / left stick moves focus, A selects, B goes back. Called every frame. */
+  _pollPad(dt) {
+    const g = this.game;
+    if (!g || typeof document === 'undefined') return;
+    const scr = g.state === 'play' ? null : this._activeScreen();
+    const hint = this._navHint || (this._navHint = $('#navhint'));
+    if (hint) hint.classList.toggle('hidden', !scr || scr.id === 'offers');
+    if (!scr || typeof navigator === 'undefined' || !navigator.getGamepads) return;
+    const pad = [...navigator.getGamepads()].find(Boolean);
+    const usingPad = !!pad && g.input.usingPad;
+    if (hint) {
+      const txt = usingPad ? '<b>✚</b> Navigate <b>A</b> Select <b>B</b> Back' : '<b>↑ ↓</b> Navigate <b>Enter</b> Select <b>Esc</b> Back';
+      if (hint.innerHTML !== txt) hint.innerHTML = txt;
+    }
+    if (!pad || !this._pad) return;
+    const P = this._pad;
+    const btn = (i) => !!(pad.buttons[i] && pad.buttons[i].pressed);
+    const edge = (i) => btn(i) && !P.prev[i];
+    const ay = pad.axes[1] || 0, ax = pad.axes[0] || 0;
+    const dir = btn(12) || ay < -0.6 ? -1 : btn(13) || ay > 0.6 ? 1 : btn(14) || ax < -0.6 ? -1 : btn(15) || ax > 0.6 ? 1 : 0;
+    P.t -= dt;
+    if (dir && P.t <= 0) { this._move(dir); P.t = P.held ? 0.12 : 0.35; P.held = true; }
+    if (!dir) { P.held = false; P.t = 0; }
+    if (edge(0) && document.activeElement && scr.contains(document.activeElement)) document.activeElement.click();
+    if (edge(1)) this.back();
+    P.prev = pad.buttons.map((b) => b.pressed);
+  }
+
   /** Re-theme the UI for an art pack (CSS variables keyed off body[data-pack]); the overlay canvas reads them back. */
   setPack(style) {
     if (typeof document === 'undefined') return;
+    this.minimal = !!(style && style.cinematic);
     document.body.dataset.pack = (style && style.cast) || 'requiem';
     const cs = getComputedStyle(document.body);
     for (const k of Object.keys(this.pal)) {
@@ -111,12 +262,25 @@ export class UI {
 
   showMenu(on) {
     this.el.menu.classList.toggle('hidden', !on);
-    if (on) this.updateMenuStats();
+    if (on) { this.updateMenuStats(); this._autoFocus(this.el.menu); }
   }
 
   showHud(on) { this.hudEl.classList.toggle('hidden', !on); }
-  showPause(on) { this.el.pause.classList.toggle('hidden', !on); }
-  showSettings(on) { this.el.settings.classList.toggle('hidden', !on); }
+  showPause(on) {
+    this.el.pause.classList.toggle('hidden', !on);
+    if (on) {
+      const g = this.game, r = g && g.run;
+      const ps = $('#pause-stats');
+      if (ps && r) {
+        ps.innerHTML = [
+          [g.mode === 'arena' ? 'Rift Sanctum' : g.dim.name, `Depth ${g.depth + 1}`], ['Time', fmtTime(r.time)], ['Level', g.player.level],
+          ['Foes unmade', r.kills], ['Waves', g.wavesTotal || 0], ['Shards', g.player.shards],
+        ].map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('');
+      }
+      this._autoFocus(this.el.pause);
+    }
+  }
+  showSettings(on) { this.showScreen('settings', on); }
   get settingsOpen() { return !this.el.settings.classList.contains('hidden'); }
 
   title(name, sub, tag) {
@@ -124,8 +288,8 @@ export class UI {
     const boss = tag === 'BOSS';
     // letters slam in one by one, like an anime episode title
     const letters = [...String(name)].map((ch, i) => (ch === ' ' ? ' ' : `<i style="--i:${i}">${esc(ch)}</i>`)).join('');
-    const tape = boss ? '<div class="tc-tape top"></div><div class="tc-tape bottom"></div>' : '';
-    t.innerHTML = `${tape}<div class="tc-band"><div class="tc-tag">${esc(boss ? 'WARNING · BOSS' : tag)}</div><div class="tc-name">${letters}</div><div class="tc-sub">${esc(sub)}</div></div>`;
+    const tape = boss && !this.minimal ? '<div class="tc-tape top"></div><div class="tc-tape bottom"></div>' : '';
+    t.innerHTML = `${tape}<div class="tc-band"><div class="tc-tag">${esc(boss ? (this.minimal ? 'Guardian' : 'WARNING · BOSS') : tag)}</div><div class="tc-name">${letters}</div><div class="tc-sub">${esc(sub)}</div></div>`;
     t.classList.toggle('boss', boss);
     t.classList.remove('show');
     void t.offsetWidth;
@@ -237,6 +401,7 @@ export class UI {
     $('#go-echoes').textContent = `+${r.echoes}`;
     $('#go-total').textContent = r.total;
     this.updateMenuStats();
+    this._autoFocus(el);
   }
 
   // ------------------------------------------------------------ skill tree
@@ -308,7 +473,11 @@ export class UI {
     fx.last = now;
     const hpFrac = clamp(p.hp / p.stats.maxHp, 0, 1);
     e.hpFill.style.width = `${hpFrac * 100}%`;
-    e.hpText.textContent = `HP ${Math.max(0, Math.ceil(p.hp))} / ${Math.round(p.stats.maxHp)}`;
+    e.hpText.textContent = this.minimal ? `${Math.max(0, Math.ceil(p.hp))}` : `HP ${Math.max(0, Math.ceil(p.hp))} / ${Math.round(p.stats.maxHp)}`;
+    // contextual HUD: secondary elements recede when nothing is happening
+    const busy = g.inCombat || hpFrac < 0.999 || (g.boss && g.boss.alive) || p.ult >= 1 || (g.spawner && g.spawner.active);
+    fx.calmT = busy ? 0 : (fx.calmT || 0) + dt;
+    this.hudEl.classList.toggle('calm', fx.calmT > 4);
     // the white "ghost" bar holds where the health was, then drains down to it
     if (fx.hp >= 0 && p.hp < fx.hp - 0.5) {
       fx.ghostHold = 0.4;
@@ -332,11 +501,12 @@ export class UI {
     e.ultBar.classList.toggle('ready', p.ult >= 1);
     e.dodge.style.width = `${(1 - clamp(p.dodgeCd / p.stats.dodgeCd, 0, 1)) * 100}%`;
     e.xpFill.style.width = `${(p.xp / p.xpNext) * 100}%`;
-    if (p.level !== fx.level) { if (fx.level >= 0) pop(e.lvlBadge, 'scale(1.8) rotate(-30deg)'); fx.level = p.level; e.level.textContent = p.level; }
-    if (p.shards !== fx.shards) { if (fx.shards >= 0 && p.shards > fx.shards) pop(e.chipShards, 'scale(1.35) translateY(-4px)', 'skewX(-12deg)'); fx.shards = p.shards; e.shards.textContent = p.shards; }
+    if (p.level !== fx.level) { if (fx.level >= 0) pop(e.lvlBadge, this.minimal ? 'scale(1.3)' : 'scale(1.8) rotate(-30deg)'); fx.level = p.level; e.level.textContent = p.level; }
+    if (p.shards !== fx.shards) { if (fx.shards >= 0 && p.shards > fx.shards) pop(e.chipShards, this.minimal ? 'scale(1.15)' : 'scale(1.35) translateY(-4px)', this.minimal ? '' : 'skewX(-12deg)'); fx.shards = p.shards; e.shards.textContent = p.shards; }
     e.timer.textContent = fmtTime(g.run.time);
     e.kills.textContent = g.run.kills;
-    e.depth.textContent = `${g.mode === 'arena' ? 'Rift Sanctum' : g.dim.name} · Depth ${g.depth + 1}`;
+    const dtxt = this.minimal ? `${g.mode === 'arena' ? 'Rift Sanctum' : g.dim.name.replace(/^The /, '')} — ${g.depth + 1}` : `${g.mode === 'arena' ? 'Rift Sanctum' : g.dim.name} · Depth ${g.depth + 1}`;
+    if (e.depth.textContent !== dtxt) e.depth.textContent = dtxt;
     // objective
     let obj = '';
     if (g.mode === 'open') {
@@ -350,14 +520,14 @@ export class UI {
     if (obj !== this._lastObj) {
       // only pop when the objective itself changes, not on every timer tick
       const kind = obj.replace(/<[^>]+>|[\d:%/]+/g, '');
-      if (this._lastObj !== undefined && kind !== this._lastObjKind) pop(e.objective, 'scale(1.25)', 'translateX(-50%) skewX(-10deg)');
+      if (this._lastObj !== undefined && kind !== this._lastObjKind && !this.minimal) pop(e.objective, 'scale(1.25)', 'translateX(-50%) skewX(-10deg)');
       e.objective.innerHTML = obj; this._lastObj = obj; this._lastObjKind = kind;
     }
     // wave tracker
     const sp = g.spawner;
     if (g.mode === 'open' && sp) {
       const label = sp.active ? `${sp.kind === 'elite' ? 'Elite wave' : sp.kind === 'tide' ? 'Tide wave' : 'Wave'} ${g.wavesTotal}` : `Next wave ${Math.ceil(Math.max(0, sp.breathT))}s`;
-      if (label !== fx.wave) { e.waveLabel.textContent = label; fx.wave = label; e.wave.className = sp.active ? sp.kind : 'rest'; pop(e.waveLabel, 'scale(1.3)'); }
+      if (label !== fx.wave) { e.waveLabel.textContent = label; fx.wave = label; e.wave.className = sp.active ? sp.kind : 'rest'; if (!this.minimal) pop(e.waveLabel, 'scale(1.3)'); }
       e.waveFill.style.width = `${(sp.active ? 1 - sp.progress : 0) * 100}%`;
       e.wave.style.display = '';
     } else e.wave.style.display = 'none';
@@ -411,7 +581,7 @@ export class UI {
         if (a && a.textContent !== t) a.textContent = t;
       }
       // a pop the moment an ability comes off cooldown
-      if (s._wasCd && cd <= 0 && k !== 'arms') pop(el, 'scale(1.25)', 'skewX(-8deg)');
+      if (s._wasCd && cd <= 0 && k !== 'arms') pop(el, this.minimal ? 'scale(1.12)' : 'scale(1.25)', this.minimal ? '' : 'skewX(-8deg)');
       s._wasCd = cd > 0;
     }
   }
@@ -432,9 +602,10 @@ export class UI {
     ctx.fillStyle = 'rgba(0,0,0,0.004)';
     ctx.fillRect(0, 0, 1, 1);
     this.updateHud(g);
+    this._pollPad(1 / 60);
     this.hudEl.classList.toggle('wiping', !!g.transition);
-    if (g.state !== 'title') this._drawWorldUi(ctx, g, W, H);
-    if (g.transition) this._wipe(ctx, g, W, H);
+    if (g.state !== 'title') (this.minimal ? this._drawWorldUiMinimal(ctx, g, W, H) : this._drawWorldUi(ctx, g, W, H));
+    if (g.transition && !this.minimal) this._wipe(ctx, g, W, H);
   }
 
   _drawWorldUi(ctx, g, W, H) {
@@ -507,6 +678,208 @@ export class UI {
       if (g.lock && g.lock.alive) this._reticle(ctx, g, g.lock, W, H);
       if (!g.input.locked && !g.input.usingPad) this._banner(ctx, W / 2, H - 52, 'Click the screen to enable mouse look', '', P.paper, 13, 0, true);
     }
+  }
+
+  // ------------------------------------------------------------ minimal (cinematic) overlay
+  /**
+   * The cinematic pack's world-space UI: clean serif damage numerals, hairline enemy health that appears only once
+   * a foe is hurt, quiet objective markers that show their name only near the centre of view, a thin reticle and
+   * understated prompts. Nothing jitters or slams; everything fades.
+   */
+  _drawWorldUiMinimal(ctx, g, W, H) {
+    const vp = g.R.vp, t = this.tmp;
+    const SERIF = '"Cinzel", "Trajan Pro", "Optima", "Palatino Linotype", Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // damage numbers
+    for (const n of g.numbers) {
+      if (!project(vp, n.x + n.ox, n.y, n.z, W, H, t)) continue;
+      const life = 0.9 - n.t;
+      const k = clamp(14 / t[2], 0.6, 1.25);
+      const size = (n.crit ? 24 : 15) * k * (life < 0.08 ? 0.8 + (life / 0.08) * 0.2 : 1);
+      ctx.globalAlpha = clamp(n.t / 0.3, 0, 1) * clamp(life / 0.05, 0, 1);
+      ctx.font = `${n.crit ? 700 : 600} ${size}px ${SERIF}`;
+      ctx.shadowColor = 'rgba(0,0,0,0.85)'; ctx.shadowBlur = 6; ctx.shadowOffsetY = 1;
+      const hurt = n.color[0] > 0.9 && n.color[1] < 0.4;
+      ctx.fillStyle = n.crit ? '#f2cf7c' : hurt ? '#ff6b6b' : 'rgba(240,234,224,0.95)';
+      ctx.fillText(String(n.v), t[0], t[1]);
+    }
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    ctx.globalAlpha = 1;
+    // enemy health: a hairline that appears once a foe is hurt and fades when it isn't
+    for (const e of g.enemies) {
+      if (!e.alive || e.boss || e.state === 'spawn') continue;
+      const hurt = e.hp < e.maxHp;
+      if (!hurt && !e.elite) continue;
+      if (!project(vp, e.x, e.y + 2.3 * e.size + (e.hover || 0), e.z, W, H, t) || t[2] > 34) continue;
+      const since = g.time - (e.lastHit || -99);
+      const a = e.elite ? 1 : clamp(1.6 - since * 0.4, 0, 1) * clamp(1.3 - t[2] / 34, 0, 1);
+      if (a <= 0.02) continue;
+      const w = e.elite ? 60 : 34;
+      ctx.globalAlpha = a;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(t[0] - w / 2 - 1, t[1] - 1, w + 2, 4);
+      ctx.fillStyle = e.elite ? '#c9a45a' : '#c8283c'; ctx.fillRect(t[0] - w / 2, t[1], w * clamp(e.hp / e.maxHp, 0, 1), 2);
+      if (e.elite) {
+        ctx.font = `600 10px ${SERIF}`;
+        ctx.fillStyle = 'rgba(230,214,180,0.9)';
+        ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 4;
+        ctx.fillText(`ELDRITCH ${e.name.toUpperCase()}`.split('').join(String.fromCharCode(8202)), t[0], t[1] - 10);
+        ctx.shadowBlur = 0;
+      }
+    }
+    ctx.globalAlpha = 1;
+    // markers
+    const W_ = g.world;
+    const markers = [];
+    if (W_.portal) markers.push({ x: W_.portal.x, y: W_.portal.y + 4, z: W_.portal.z, label: 'Rift', color: '#e58a5a', big: true });
+    if (W_.exitPortal) markers.push({ x: W_.exitPortal.x, y: W_.exitPortal.y + 4, z: W_.exitPortal.z, label: 'Descend', color: '#7fd8c0', big: true });
+    for (const o of W_.obelisks) if (!o.done) markers.push({ x: o.x, y: o.y + 7, z: o.z, label: 'Obelisk', color: '#b9a3e0' });
+    for (const ch of W_.chests) {
+      if (ch.opened) continue;
+      const d = Math.hypot(ch.x - g.player.x, ch.z - g.player.z);
+      if (d < 30) markers.push({ x: ch.x, y: ch.y + 1.5, z: ch.z, label: '', color: '#d8b878', small: true, dist: d });
+    }
+    for (const m of markers) this._markerMinimal(ctx, vp, m, W, H, g, SERIF);
+    // container prompt
+    if (g.nearChest && g.state === 'play' && project(vp, g.nearChest.x, g.nearChest.y + 2.1, g.nearChest.z, W, H, t)) {
+      const ch = g.nearChest;
+      const cost = W_.chestCost(ch, g.player.stats.chestDiscount);
+      const ok = g.player.shards >= cost;
+      this._promptMinimal(ctx, t[0], t[1], g.input.usingPad ? 'LB' : 'E', `Open ${CHEST_TIERS[ch.tier].name}`, `${cost} ◆`, ok, SERIF);
+    }
+    if (g.state === 'play' && g.player.alive) {
+      if (g.player.ult >= 1) this._captionMinimal(ctx, W / 2, H * 0.74, 'Rend Reality', g.input.usingPad ? 'RT' : 'R', '#e6c57e', SERIF, 0.6 + 0.4 * Math.sin(g.time * 3));
+      if (g.timeStopT > 0) this._captionMinimal(ctx, W / 2, H * 0.22, 'Time stands still', '', '#9cc8d8', SERIF, 0.9);
+      if (g.lock && g.lock.alive) this._reticleMinimal(ctx, g, g.lock, W, H, SERIF);
+      if (!g.input.locked && !g.input.usingPad) this._captionMinimal(ctx, W / 2, H - 150, 'Click to take control of the camera', '', 'rgba(233,225,210,0.75)', SERIF, 0.8);
+    }
+  }
+
+  _markerMinimal(ctx, vp, m, W, H, g, SERIF) {
+    const t = this.tmp;
+    const on = project(vp, m.x, m.y, m.z, W, H, t);
+    const d = Math.hypot(m.x - g.player.x, m.z - g.player.z);
+    let x = t[0], y = t[1];
+    const margin = 40;
+    const off = !on || x < margin || x > W - margin || y < margin || y > H - margin;
+    if (m.small && off) return;
+    let ang = 0;
+    if (off) {
+      let dx = x - W / 2, dy = y - H / 2;
+      if (!on) {
+        const R = g.R, cp = R.camPos;
+        const rx = m.x - cp[0], ry = m.y - cp[1], rz = m.z - cp[2];
+        dx = rx * R.camRight[0] + ry * R.camRight[1] + rz * R.camRight[2];
+        dy = Math.max(-(rx * R.camUp[0] + ry * R.camUp[1] + rz * R.camUp[2]), Math.abs(dx) * 0.25 + 1);
+      }
+      const s = Math.min((W / 2 - margin) / Math.abs(dx || 1e-3), (H / 2 - margin) / Math.abs(dy || 1e-3));
+      x = W / 2 + dx * s; y = H / 2 + dy * s;
+      ang = Math.atan2(dy, dx);
+    }
+    // labels only near the centre of view (or for the rift itself), so the screen stays clean
+    const central = Math.hypot(x - W / 2, y - H / 2) < Math.min(W, H) * 0.22;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.globalAlpha = m.small ? clamp(1 - m.dist / 30, 0.2, 0.8) : off ? 0.75 : 0.9;
+    ctx.strokeStyle = m.color; ctx.fillStyle = m.color;
+    ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 4;
+    if (off) {
+      ctx.rotate(ang);
+      ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(-3, -6); ctx.lineTo(-1, 0); ctx.lineTo(-3, 6); ctx.closePath(); ctx.fill();
+      ctx.rotate(-ang);
+    } else {
+      const r = m.small ? 4 : 6;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(r * 0.75, 0); ctx.lineTo(0, r); ctx.lineTo(-r * 0.75, 0); ctx.closePath(); ctx.stroke();
+      if (!m.small) { ctx.beginPath(); ctx.arc(0, 0, 1.6, 0, Math.PI * 2); ctx.fill(); }
+      if (m.big) { ctx.globalAlpha *= 0.5 + 0.3 * Math.sin(g.time * 2.5); ctx.beginPath(); ctx.arc(0, 0, 13, 0, Math.PI * 2); ctx.stroke(); }
+    }
+    if (!m.small) {
+      ctx.globalAlpha = off ? 0.7 : 0.85;
+      ctx.font = `500 10px ${SERIF}`;
+      ctx.fillStyle = 'rgba(233,225,210,0.85)';
+      const ty = off ? (y > H / 2 ? -16 : 16) : 15;
+      ctx.fillText(`${Math.round(d)} m`, 0, ty);
+      if (central || m.big) { ctx.fillStyle = m.color; ctx.font = `600 10px ${SERIF}`; ctx.fillText(m.label.toUpperCase().split('').join(String.fromCharCode(8202)), 0, -ty); }
+    }
+    ctx.restore();
+  }
+
+  _promptMinimal(ctx, x, y, key, text, price, ok, SERIF) {
+    ctx.save();
+    ctx.font = `600 13px ${SERIF}`;
+    const tw = ctx.measureText(text).width;
+    ctx.font = `600 12px ${SERIF}`;
+    const pw = ctx.measureText(price).width;
+    const kw = 14 + key.length * 7;
+    const w = kw + 10 + tw + 14 + pw;
+    let cx = x - w / 2;
+    ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 8;
+    // keycap: thin outlined rounded rect
+    ctx.strokeStyle = 'rgba(233,225,210,0.85)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(cx, y - 10, kw, 20, 4) : ctx.rect(cx, y - 10, kw, 20); ctx.stroke();
+    ctx.fillStyle = '#e9e1d2'; ctx.font = `700 11px ${SERIF}`; ctx.fillText(key, cx + kw / 2, y + 1);
+    cx += kw + 10;
+    ctx.textAlign = 'left';
+    ctx.font = `600 13px ${SERIF}`; ctx.fillStyle = '#e9e1d2'; ctx.fillText(text, cx, y + 1);
+    cx += tw + 14;
+    ctx.font = `600 12px ${SERIF}`; ctx.fillStyle = ok ? '#c9a45a' : '#8d8478'; ctx.fillText(price, cx, y + 1);
+    ctx.restore();
+  }
+
+  _captionMinimal(ctx, x, y, text, key, color, SERIF, alpha = 1) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = `600 12px ${SERIF}`;
+    const label = text.toUpperCase().split('').join(String.fromCharCode(8202));
+    const tw = ctx.measureText(label).width;
+    const kw = key ? 14 + key.length * 7 : 0;
+    const w = tw + (key ? kw + 10 : 0);
+    ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 8;
+    // thin gilt rules either side
+    const g = ctx.createLinearGradient(x - w / 2 - 70, 0, x - w / 2 - 10, 0);
+    g.addColorStop(0, 'rgba(201,164,90,0)'); g.addColorStop(1, 'rgba(201,164,90,0.7)');
+    ctx.fillStyle = g; ctx.fillRect(x - w / 2 - 70, y, 60, 1);
+    const g2 = ctx.createLinearGradient(x + w / 2 + 10, 0, x + w / 2 + 70, 0);
+    g2.addColorStop(0, 'rgba(201,164,90,0.7)'); g2.addColorStop(1, 'rgba(201,164,90,0)');
+    ctx.fillStyle = g2; ctx.fillRect(x + w / 2 + 10, y, 60, 1);
+    let cx = x - w / 2;
+    if (key) {
+      ctx.strokeStyle = color; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(cx, y - 10, kw, 20, 4) : ctx.rect(cx, y - 10, kw, 20); ctx.stroke();
+      ctx.fillStyle = color; ctx.font = `700 11px ${SERIF}`; ctx.textAlign = 'center'; ctx.fillText(key, cx + kw / 2, y + 1);
+      cx += kw + 10;
+    }
+    ctx.textAlign = 'left';
+    ctx.font = `600 12px ${SERIF}`; ctx.fillStyle = color;
+    ctx.fillText(label, cx, y + 1);
+    ctx.restore();
+  }
+
+  _reticleMinimal(ctx, g, e, W, H, SERIF) {
+    const t = this.tmp;
+    const hy = e.y + (e.boss ? (e.cy ? e.cy - e.y : 2.4 * e.size) : 1.1 * e.size);
+    if (!project(g.R.vp, e.x, hy, e.z, W, H, t)) return;
+    const r = clamp((e.boss ? 120 : 40) * e.size / Math.max(4, t[2]) * 6, 16, 90);
+    ctx.save();
+    ctx.translate(t[0], t[1]);
+    ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 4;
+    ctx.strokeStyle = 'rgba(233,225,210,0.85)'; ctx.lineWidth = 1.2;
+    const rot = g.time * 0.6;
+    for (let i = 0; i < 4; i++) {
+      const a = rot + (i * Math.PI) / 2;
+      ctx.beginPath(); ctx.arc(0, 0, r, a - 0.32, a + 0.32); ctx.stroke();
+    }
+    ctx.fillStyle = '#c8283c';
+    ctx.beginPath(); ctx.arc(0, 0, 2, 0, Math.PI * 2); ctx.fill();
+    if (!e.boss) {
+      const w = 56, f = clamp(e.hp / e.maxHp, 0, 1);
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(-w / 2 - 1, r + 9, w + 2, 4);
+      ctx.fillStyle = '#c8283c'; ctx.fillRect(-w / 2, r + 10, w * f, 2);
+      ctx.font = `600 10px ${SERIF}`; ctx.fillStyle = 'rgba(233,225,210,0.85)';
+      ctx.fillText(e.name.toUpperCase().split('').join(String.fromCharCode(8202)), 0, r + 24);
+    }
+    ctx.restore();
   }
 
   /** Lock-on reticle: four inked brackets that close in and step round on twos, plus the target's health. */

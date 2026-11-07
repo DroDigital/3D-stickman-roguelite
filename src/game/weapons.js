@@ -1,4 +1,5 @@
 // Weapon archetypes, movesets and tier-scaled procedural models / VFX.
+import { MAT } from '../gfx/materials.js';
 import { PRIM } from '../gfx/renderer.js';
 import { RARITY } from './config.js';
 import { STANCE } from './humanoid.js';
@@ -232,8 +233,16 @@ export function drawWeapon(R, w, hx, hy, hz, u, v, wv, flash = 0) {
       B[k] = (k === 0 ? hx : k === 1 ? hy : hz) + u[k] * p[4] + v[k] * p[5] + wv[k] * p[6];
     }
     const c = w.colors[p[8]];
+    const role = p[8];
+    // cinematic materials: forged steel blades, iron fittings, leather grips, glowing runes untextured
+    if (role === 'metal' || role === 'edge') R.setMat(MAT.STEEL, 0.22, 1, 6);
+    else if (role === 'dark') R.setMat(MAT.IRON, 0.45, 0.9, 5);
+    else if (role === 'grip' || role === 'wrap' || role === 'handle') R.setMat(MAT.LEATHER, 0.7, 0, 8);
+    else if (role === 'bone') R.setMat(MAT.BONE, 0.5, 0, 6);
+    else R.setMat(-1, 0.3, 0, 0);
     R.segPrim(p[0], A[0], A[1], A[2], B[0], B[1], B[2], p[7], c, p[9] + flash, p[10]);
   }
+  R.setMat();
 }
 
 /** Basis helper: u = dir, v perpendicular using a reference axis. Writes into v and w arrays. */

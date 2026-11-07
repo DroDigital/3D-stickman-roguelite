@@ -1,6 +1,7 @@
 // Enemy base class + creature roster. Each type defines a rig, procedural animation, AI and attacks.
 import { Topology, drawRig, drawFlesh } from './rig.js';
 import { Anatomy, BODIES, castBody, drawBody } from './anatomy.js';
+import { MAT } from '../gfx/materials.js';
 import { HumanoidAnimator, humanoidTopology, CLIPS, STANCE, J } from './humanoid.js';
 import { Legs } from './legs.js';
 import { PRIM } from '../gfx/renderer.js';
@@ -653,6 +654,8 @@ export class Enemy {
   draw(R, game) {
     const def = this.def;
     const flash = this.flash * 0.8;
+    // cinematic: organic creatures read as wet flesh, bosses as bark-and-bone horrors
+    R.setMat(this.boss ? MAT.FLESH_ROCK : MAT.FLESH, this.boss ? 0.55 : 0.42, 0, this.boss ? 0.9 : 2.2);
     if (game.style && game.style.models) {
       const cp = game.camPos;
       const far = (this.x - cp[0]) ** 2 + (this.z - cp[2]) ** 2 > 45 * 45;
@@ -662,6 +665,7 @@ export class Enemy {
       drawRig(R, this.topo, this.pts, this.palette, flash, this.size);
     }
     if (def.draw) def.draw(this, R, game);
+    R.setMat();
     if (this.elite) {
       const c = game.dim.env.moonCol;
       R.light(this.x, this.y + 1.2 * this.size, this.z, 5, c[0], c[1], c[2], 0.9);

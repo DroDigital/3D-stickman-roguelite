@@ -4,6 +4,7 @@
 // coat tails, robe tatters) runs on springs and Verlet chains for overlapping, fluid movement.
 // Everything is generated in code — no external models or textures.
 import { PRIM } from '../gfx/renderer.js';
+import { MAT } from '../gfx/materials.js';
 import { J } from './humanoid.js';
 
 // ------------------------------------------------------------------ small vector helpers
@@ -59,6 +60,20 @@ export const BODIES = {
  */
 export const CASTS = {
   requiem: {},
+  // Abyssal Cinematic: the sourced Quaternius mannequin skinned onto the skeleton (`mq`), dressed with PBR cloth,
+  // bone and forged-iron materials. Joint rings glow on the hero (weapon colour) and the elites.
+  abyssal: {
+    hero: { hairStyle: 'hood', top: [0.07, 0.065, 0.08], top2: [0.42, 0.05, 0.07], tails: 4, tailLen: 7, tailCol: [0.3, 0.035, 0.05], eyes: 'glow',
+      mq: { main: [0.13, 0.125, 0.14], mainMat: MAT.IRON, rough: 0.42, metal: 0.85, joint: null, jointGlow: 1.8, jointMat: MAT.NONE, jointRough: 0.3, jointMetal: 0, girth: 1.02, texScale: 2.5 } },
+    husk: { tails: 2, tailCol: [0.22, 0.18, 0.16], eyes: 'glow',
+      mq: { main: [0.74, 0.7, 0.62], mainMat: MAT.BONE, rough: 0.55, joint: [0.12, 0.05, 0.05], jointMat: MAT.FLESH, girth: 0.86, texScale: 3, head: 0.95 } },
+    brute: { tails: 2, tailCol: [0.2, 0.14, 0.12], eyes: 'glow', horns: true,
+      mq: { main: [0.42, 0.25, 0.22], mainMat: MAT.FLESH, rough: 0.6, joint: [0.16, 0.15, 0.16], jointMat: MAT.IRON, jointMetal: 0.9, girth: 1.75, texScale: 1.6, head: 0.85 } },
+    choir: { top: [0.8, 0.78, 0.72], top2: [0.55, 0.12, 0.14], eyes: 'none',
+      mq: { main: [0.82, 0.8, 0.74], mainMat: MAT.CLOTH, rough: 0.8, joint: [1.0, 0.75, 0.35], jointGlow: 1.4, jointMat: MAT.NONE, girth: 0.82, texScale: 3 } },
+    shepherd: { top: [0.1, 0.08, 0.08], top2: [0.3, 0.2, 0.16], tailCol: [0.12, 0.09, 0.08], eyes: 'glow',
+      mq: { main: [0.3, 0.24, 0.2], mainMat: MAT.BARK, rough: 0.85, joint: [1.0, 0.45, 0.15], jointGlow: 1.6, jointMat: MAT.NONE, girth: 1.0, texScale: 1.4 } },
+  },
   sutra: {
     hero: { skin: [0.96, 0.9, 0.86], top: [0.93, 0.91, 0.87], top2: [0.82, 0.08, 0.1], bottom: [0.08, 0.07, 0.09], boots: [0.1, 0.09, 0.1],
       hair: [0.06, 0.05, 0.07], hairStyle: 'ponytail', eyeColFixed: [0.9, 0.1, 0.12], tails: 2, tailLen: 7, tailCol: [0.82, 0.08, 0.1], gloves: [0.93, 0.91, 0.87], chest: [0.17, 0.16, 0.11] },
@@ -174,7 +189,7 @@ export function expandSkeleton(pts, s, st = null) {
 }
 
 /** Feet need the ground: heel and a toe that rolls down when the foot lifts. */
-function feet(sk, s, ground) {
+export function feet(sk, s, ground) {
   for (const side of ['L', 'R']) {
     const a = sk[side + 'FT'];
     const lift = Math.max(0, Math.min(1, (a[1] - ground(a[0], a[2]) - 0.06 * s) / (0.18 * s)));
@@ -285,6 +300,8 @@ export function drawBody(R, body, pts, st, s, ground, opts = {}) {
   const lod = opts.lod || 0;
   const sk = expandSkeleton(pts, s, st);
   feet(sk, s, ground);
+  const mq = body.mq && R.mannequin;
+  if (mq) return drawMannequin(R, mq, body, sk, st, s, ground, opts);
   const B = body, L = B.limb, K = B.bulk;
   const skin = shade(B.skin, flash), top = shade(B.top, flash), top2 = shade(B.top2, flash);
   const bottom = shade(B.bottom, flash), boots = shade(B.boots, flash);
@@ -441,6 +458,67 @@ export function drawBody(R, body, pts, st, s, ground, opts = {}) {
       }
     }
   }
+  return sk;
+}
+
+/** Cinematic body: the sourced mannequin skinned onto the skeleton, plus cloth, hood, horns and glowing eyes. */
+function drawMannequin(R, mq, B, sk, st, s, ground, opts) {
+  const m = B.mq, flash = opts.flash || 0;
+  const eye = B.eyeColFixed || opts.eyeCol || [1, 0.3, 0.2];
+  const jointCol = m.joint || eye;
+  mq.add(sk, {
+    main: shade(m.main, flash), joint: shade(jointCol, flash),
+    mainMat: m.mainMat, jointMat: m.jointMat, rough: m.rough, metal: m.metal, jointRough: m.jointRough, jointMetal: m.jointMetal,
+    mainEmis: flash * 2.5, jointEmis: (m.jointGlow || 0) + flash * 2.5, girth: (m.girth || 1) * s, headScale: m.head || 1,
+    grip: 1, texScale: m.texScale,
+  });
+  const hs = (m.head || 1) * s;
+  // head frame matching the mannequin's skull (the retarget puts it 32% of the way from neck to head joint)
+  const skull = mad(lerp3(sk.NECK, sk.HEAD, 0.32), sk.hUp, 0.1 * hs);
+  R.setMat(-1, 0.15, 0, 0);
+  if (B.eyes === 'glow' && (opts.lod || 0) === 0) {
+    for (const side of [-1, 1]) {
+      const e = mad(mad(mad(skull, sk.hF, 0.085 * hs), sk.hR, side * 0.034 * hs), sk.hUp, 0.005 * hs);
+      R.ball(e[0], e[1], e[2], 0.012 * hs, eye, 6, true);
+    }
+  }
+  const top = shade(B.top, flash), top2 = shade(B.top2, flash);
+  R.setMat(MAT.CLOTH, 0.85, 0, 3);
+  if (B.hairStyle === 'hood') {
+    ell(R, PRIM.ORB, mad(mad(skull, sk.hUp, 0.015 * hs), sk.hF, -0.03 * hs), sk.hR, sk.hUp, sk.hF, 0.135 * hs, 0.15 * hs, 0.135 * hs, top, 0);
+    const base = mad(mad(skull, sk.hUp, 0.06 * hs), sk.hF, -0.06 * hs);
+    const tip = mad(mad(skull, sk.hUp, 0.08 * hs), sk.hF, -0.3 * hs);
+    R.segPrim(PRIM.CONE, base[0], base[1], base[2], tip[0], tip[1], tip[2], 0.09 * hs, top, 0);
+    // mantle over the shoulders
+    ell(R, PRIM.ORB, mad(sk.NECK, sk.T, -0.06 * s), sk.Rs, sk.T, sk.Ft, 0.21 * s, 0.07 * s, 0.13 * s, top2, 0);
+  }
+  if (B.horns) {
+    R.setMat(MAT.BONE, 0.5, 0, 4);
+    for (const side of [-1, 1]) {
+      const base = mad(mad(skull, sk.hUp, 0.08 * hs), sk.hR, side * 0.07 * hs);
+      const mid = mad(mad(mad(base, sk.hUp, 0.08 * hs), sk.hR, side * 0.12 * hs), sk.hF, 0.02 * hs);
+      const tip = mad(mad(mid, sk.hUp, 0.14 * hs), sk.hF, 0.06 * hs);
+      R.segPrim(PRIM.CONE, base[0], base[1], base[2], mid[0], mid[1], mid[2], 0.05 * hs, [0.78, 0.72, 0.62], 0);
+      R.segPrim(PRIM.CONE, mid[0], mid[1], mid[2], tip[0], tip[1], tip[2], 0.035 * hs, [0.78, 0.72, 0.62], 0);
+    }
+  }
+  R.setMat(MAT.CLOTH, 0.85, 0, 3);
+  if (B.robe) {
+    const w = mad(sk.LUMBAR, sk.T, -0.05 * s);
+    const g = ground(sk.PELVIS[0], sk.PELVIS[2]);
+    const bottomC = [sk.PELVIS[0], Math.max(g + 0.05, sk.PELVIS[1] - 0.85 * s), sk.PELVIS[2]];
+    R.segPrim(PRIM.CONE, bottomC[0], bottomC[1], bottomC[2], w[0], w[1], w[2], 0.33 * s * (m.girth || 1), top, 0);
+  }
+  if (st && (opts.lod || 0) === 0) {
+    const col = B.tailCol ? shade(B.tailCol, flash) : top;
+    for (const t of st.tails) {
+      for (let i = 1; i < t.n; i++) {
+        const a = t.p[i - 1], b = t.p[i];
+        R.seg(a[0], a[1], a[2], b[0], b[1], b[2], 0.055 * s * (1 - (i / t.n) * 0.5), col, 0);
+      }
+    }
+  }
+  R.setMat();
   return sk;
 }
 

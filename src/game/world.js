@@ -5,6 +5,7 @@ import { SpatialHash } from '../core/spatial.js';
 import { terrainMesh } from '../gfx/meshes.js';
 import { Foliage } from './foliage.js';
 import { PRIM } from '../gfx/renderer.js';
+import { MAT, REALM_MATS } from '../gfx/materials.js';
 import { SHAPE } from '../gfx/particles.js';
 import { clamp, mixRgb, TAU } from '../core/math.js';
 import { WORLD_SIZE, ARENA_RADIUS } from './config.js';
@@ -163,7 +164,11 @@ export class World {
     this.step = mesh.step;
     this.half = this.size / 2;
     // the hand-drawn styles paint the ground in soft washes instead of per-triangle facets
-    this.R.setTerrain(mesh.data, terrainMesh(this.n, this.size, (x, z) => this.rawHeight(x, z), colorFn, true).data);
+    const glowFn = (x, z) => {
+      const v = veinN.ridge(x * 0.05, z * 0.05, 2);
+      return v > 0.5 ? clamp((v - 0.5) * 10, 0, 1) * Math.min(1, t.veins * 2) : 0;
+    };
+    this.R.setTerrain(mesh.data, terrainMesh(this.n, this.size, (x, z) => this.rawHeight(x, z), colorFn, true, glowFn).data);
   }
 
   /** Exact height matching the rendered triangle mesh. */
@@ -229,10 +234,27 @@ export class World {
     }
   }
 
+  /** PBR material per prop type (cinematic style; ignored by the other looks). */
+  _propMat(type) {
+    const rock = (REALM_MATS[this.dim.id] || REALM_MATS.ashen).rock;
+    const M = {
+      deadTree: [MAT.BARK, -1, 0, 1.4], coral: [MAT.CORAL, -1, 0, 1.8], boneSpire: [MAT.BONE, 0.55, 0, 1.2], ribcage: [MAT.BONE, 0.5, 0, 1.6],
+      rock: [rock, -1, 0, 0.45], floatRock: [rock, -1, 0, 0.45], ruinPillar: [MAT.RUIN, -1, 0, 0.7], urn: [MAT.FLESH_ROCK, 0.6, 0, 1.8],
+      crystal: [MAT.CRYSTAL, -1, 0, 0], brazier: [MAT.IRON, -1, 0.9, 1.5], monolith: [MAT.OBSIDIAN, 0.18, 0, 0.5], eggSac: [MAT.FLESH, 0.35, 0, 1.2],
+      tendril: [MAT.FLESH, 0.4, 0, 1.5],
+    }[type];
+    if (M) this.R.setMat(...M); else this.R.setMat();
+  }
+
   _prop(type, x, z, rng) {
     const y = this.height(x, z);
     const dim = this.dim;
     const t = dim.terrain;
+    this._propMat(type);
+    try { this._propBody(type, x, z, y, rng, dim, t); } finally { this.R.setMat(); }
+  }
+
+  _propBody(type, x, z, y, rng, dim, t) {
     switch (type) {
       case 'deadTree': {
         const s = rng.range(0.8, 1.6);
@@ -553,6 +575,7 @@ export class World {
     for (const a of this.animated) {
       const dx = a.x - camX, dz = a.z - camZ;
       if (dx * dx + dz * dz > 110 * 110) continue;
+      this._propMat(a.type);
       if (a.type === 'floatRock') {
         const y = a.y + Math.sin(time * 0.6 + a.phase) * 0.6;
         R.trs(PRIM.SPHERE, a.x, y, a.z, time * a.spin + a.phase, a.phase, 0.3, a.s * 1.4, a.s * 0.8, a.s * 1.2, a.col);
@@ -573,6 +596,7 @@ export class World {
         R.ball(px, py, pz, r * 1.8, mixRgb(a.col, [1, 0.9, 0.6], 0.5), 1.4);
       }
     }
+    R.setMat();
     // destructible shake / hp feedback is visual-only via particles
     // chests
     for (const c of this.chests) {
@@ -593,14 +617,18 @@ export class World {
     const cs = Math.cos(c.yaw), sn = Math.sin(c.yaw);
     const col = t.color;
     const band = c.tier === 2 ? [0.3, 0.9, 0.75] : [0.35, 0.3, 0.25];
+    R.setMat(c.tier === 0 ? MAT.BARK : c.tier === 1 ? MAT.BONE : MAT.OBSIDIAN, -1, 0, 2.5);
     R.trs(PRIM.BOX, c.x, y + 0.3 * s, c.z, c.yaw, 0, 0, 1.0 * s, 0.6 * s, 0.65 * s, col, 0);
+    R.setMat(MAT.IRON, 0.35, 1, 3);
     R.trs(PRIM.BOX, c.x, y + 0.3 * s, c.z, c.yaw, 0, 0, 1.04 * s, 0.1 * s, 0.69 * s, band, c.tier === 2 ? 0.6 : 0);
+    R.setMat(c.tier === 0 ? MAT.BARK : c.tier === 1 ? MAT.BONE : MAT.OBSIDIAN, -1, 0, 2.5);
     // lid hinged at the back edge
     const open = c.opened ? Math.min(1, c.openT * 1.4) * 1.9 : 0;
     const hz = -0.32 * s;
     const lidCy = 0.62 * s + Math.sin(open) * 0.32 * s;
     const lidCz = hz + Math.cos(open) * 0.32 * s;
     R.trs(PRIM.BOX, c.x + sn * lidCz, y + lidCy, c.z + cs * lidCz, c.yaw, -open, 0, 1.02 * s, 0.14 * s, 0.66 * s, col, 0);
+    R.setMat();
     // eye-lock / glow
     const glowCol = c.opened ? t.glow : t.glow;
     if (!c.opened) {
@@ -630,8 +658,10 @@ export class World {
     const t = this.dim.terrain;
     const col = o.done ? [0.2, 0.18, 0.22] : [0.08, 0.06, 0.1];
     const glow = o.done ? [0.4, 1, 0.7] : t.accent;
+    R.setMat(MAT.OBSIDIAN, 0.2, 0, 0.6);
     R.trs(PRIM.BOX, o.x, o.y + 3, o.z, game.time * 0.0 + o.x, 0, 0, 1.1, 6, 1.1, col, 0);
     R.trs(PRIM.CONE, o.x, o.y + 6, o.z, o.x, 0, 0, 0.8, 1.6, 0.8, col, 0);
+    R.setMat(MAT.CRYSTAL);
     const k = o.done ? 1 : o.charge;
     for (let i = 0; i < 4; i++) {
       const a = game.time * (0.6 + k * 2) + (i * TAU) / 4;
@@ -639,6 +669,7 @@ export class World {
       R.trs(PRIM.OCTA, o.x + Math.cos(a) * rr, o.y + 2 + i * 0.9, o.z + Math.sin(a) * rr, a, 0, 0, 0.15, 0.35, 0.15, glow, 0.6 + k * 2);
     }
     R.trs(PRIM.ORB, o.x, o.y + 4.2, o.z, 0, 0, 0, 0.35, 0.35, 0.35, glow, 1 + k * 3);
+    R.setMat();
     R.light(o.x, o.y + 4.2, o.z, 12 + k * 8, glow[0], glow[1], glow[2], 1 + k * 1.5);
     if (!o.done) {
       R.decal(o.x, o.y + 0.1, o.z, 8, glow[0], glow[1], glow[2], o.active ? 0.6 : 0.3, SHAPE.RING);

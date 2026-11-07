@@ -377,3 +377,239 @@ h2.blood { background: var(--accent) !important; border-left-color: var(--ink) !
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* ================================================================== Abyssal Cinematic UI
+   The default pack's interface: engraved dark-fantasy chrome instead of manga ink. Thin gilt rules on smoked
+   glass, serif capitals, soft shadows and slow fades; colour comes from bone, old gold and arterial crimson. */
+body[data-pack='abyssal'] {
+  --paper: #e9e1d2; --paper2: #b9ad98; --ink: #0b090c; --accent: #b3122a; --accent-dk: #5c0614; --accent2: #2a1a2e;
+  --hi: #c9b27a; --gold: #c9a45a; --teal: #7fd8c0; --cyan: #9cc8d8; --muted: #8d8478; --hp: #a3142a; --bg: #030204;
+  --display: 'Cinzel', 'Trajan Pro', 'Trajan', 'Optima', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+  --body: 'Cormorant Garamond', 'EB Garamond', Garamond, 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
+  --o2: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 12px rgba(0, 0, 0, 0.6);
+  --o3: 0 2px 4px rgba(0, 0, 0, 0.9), 0 0 24px rgba(0, 0, 0, 0.7);
+  --glass: linear-gradient(180deg, rgba(20, 16, 20, 0.78), rgba(8, 6, 9, 0.86));
+  --rule: 1px solid color-mix(in srgb, var(--gold) 55%, transparent);
+}
+body[data-pack='abyssal'] canvas#gl { image-rendering: auto; }
+body[data-pack='abyssal'] kbd { font-family: var(--body); font-weight: 700; color: var(--paper); background: rgba(0, 0, 0, 0.45); border: var(--rule); box-shadow: none; border-radius: 3px; }
+body[data-pack='abyssal'] #hud { font-family: var(--display); }
+body[data-pack='abyssal'] #portrait { display: none; }
+body[data-pack='abyssal'] .hud-bars { width: min(340px, 40vw); }
+body[data-pack='abyssal'] .bar { transform: none; height: 10px; border: 0; background: rgba(0, 0, 0, 0.55); box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 45%, transparent), 0 2px 10px rgba(0, 0, 0, 0.6); }
+body[data-pack='abyssal'] .bar::before { background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.3)); }
+body[data-pack='abyssal'] .bar > .fill::after { display: none; }
+body[data-pack='abyssal'] .bar > .fill::before { height: 1px; top: 1px; background: rgba(255, 255, 255, 0.35); }
+body[data-pack='abyssal'] .bar > .fill { transition: width 0.18s ease-out; }
+body[data-pack='abyssal'] .bar > .ghost { background: color-mix(in srgb, var(--paper) 55%, transparent); transition: width 0.6s 0.25s ease-in; }
+body[data-pack='abyssal'] .bar span { transform: translateY(-160%); left: 0; font-family: var(--display); font-size: 11px; letter-spacing: 0.22em; color: var(--paper); text-shadow: var(--o2); }
+body[data-pack='abyssal'] .bar.hp { height: 12px; margin-top: 18px; margin-bottom: 22px; }
+body[data-pack='abyssal'] .bar.hp > .fill { background: linear-gradient(90deg, #4a0610, var(--hp) 60%, #e0485a); box-shadow: 0 0 14px color-mix(in srgb, var(--hp) 70%, transparent); }
+body[data-pack='abyssal'] .bar.hp span { font-size: 12px; }
+body[data-pack='abyssal'] .bar.ult { height: 6px; width: 82%; margin-bottom: 18px; }
+body[data-pack='abyssal'] .bar.ult > .fill { -webkit-mask: none; mask: none; background: linear-gradient(90deg, #6b5320, var(--gold), #fff1c4); }
+body[data-pack='abyssal'] .bar.ult.ready { animation: abyssPulse 1.6s ease-in-out infinite; }
+body[data-pack='abyssal'] .bar.ult.ready > .fill { background: linear-gradient(90deg, var(--gold), #fff6d8, var(--gold)); background-size: 200% 100%; animation: abyssSheen 1.8s linear infinite; }
+body[data-pack='abyssal'] .bar.dodge { height: 3px; width: 46%; box-shadow: 0 0 0 1px color-mix(in srgb, var(--cyan) 35%, transparent); }
+body[data-pack='abyssal'] .bar.xp { height: 4px; }
+body[data-pack='abyssal'] .bar.xp > .fill { -webkit-mask: none; mask: none; background: linear-gradient(90deg, #2c5560, var(--cyan)); box-shadow: 0 0 10px var(--cyan); }
+body[data-pack='abyssal'] .bar.boss { height: 8px; }
+body[data-pack='abyssal'] .bar.boss > .fill { background: linear-gradient(90deg, #3d0410, var(--accent) 70%, #ff6a5a); }
+body[data-pack='abyssal'] .bar.boss .notch { width: 1px; background: var(--gold); }
+body[data-pack='abyssal'] #boss-name { font-family: var(--display); letter-spacing: 0.4em; font-size: 15px; color: var(--paper); text-shadow: var(--o3); text-transform: uppercase; }
+body[data-pack='abyssal'] #depth { background: none; clip-path: none; padding: 0; font-size: 13px; letter-spacing: 0.32em; color: var(--paper); text-shadow: var(--o3); border-bottom: var(--rule); padding-bottom: 4px; }
+body[data-pack='abyssal'] .chip { background: rgba(0, 0, 0, 0.45); color: var(--paper); border: 0; box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 30%, transparent); font-family: var(--display); font-size: 13px; transform: none; }
+body[data-pack='abyssal'] .chip b { color: var(--gold); }
+body[data-pack='abyssal'] #objective { transform: translateX(-50%); background: var(--glass); color: var(--paper); border: 0; border-top: var(--rule); border-bottom: var(--rule); box-shadow: 0 6px 30px rgba(0, 0, 0, 0.5); font-family: var(--body); font-size: 17px; font-weight: 600; letter-spacing: 0.04em; padding: 6px 26px; }
+body[data-pack='abyssal'] #objective b { color: var(--gold); }
+body[data-pack='abyssal'] #objective .good { color: var(--teal); }
+body[data-pack='abyssal'] #wave-label { transform: none; background: none; color: var(--paper); font-style: normal; font-family: var(--display); font-size: 12px; letter-spacing: 0.3em; text-shadow: var(--o2); box-shadow: none; border: 0; }
+body[data-pack='abyssal'] #wave.tide #wave-label, body[data-pack='abyssal'] #wave.elite #wave-label { background: none; color: #ff5a68; }
+body[data-pack='abyssal'] .wave-bar { transform: none; height: 2px; border: 0; background: rgba(0, 0, 0, 0.5); box-shadow: none; }
+body[data-pack='abyssal'] .wave-bar i { background: var(--gold); }
+body[data-pack='abyssal'] .slot { transform: none; width: 64px; height: 64px; background: radial-gradient(circle at 50% 35%, rgba(40, 32, 36, 0.85), rgba(6, 5, 7, 0.92)); border: 1px solid color-mix(in srgb, var(--c) 70%, transparent); border-radius: 50%; box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.55), 0 0 18px color-mix(in srgb, var(--c) 30%, transparent), inset 0 0 12px rgba(0, 0, 0, 0.8); }
+body[data-pack='abyssal'] .slot.empty { background: rgba(0, 0, 0, 0.25); border-style: solid; border-color: rgba(255, 255, 255, 0.12); box-shadow: none; }
+body[data-pack='abyssal'] .slot-icon, body[data-pack='abyssal'] .slot-key, body[data-pack='abyssal'] .slot-name, body[data-pack='abyssal'] .slot-marks, body[data-pack='abyssal'] .slot-ammo { transform: translateX(-50%); }
+body[data-pack='abyssal'] .slot-icon { transform: none; inset: 0; color: var(--paper); filter: drop-shadow(0 0 6px color-mix(in srgb, var(--c) 70%, transparent)); }
+body[data-pack='abyssal'] .slot-marks, body[data-pack='abyssal'] .slot-ammo { transform: none; }
+body[data-pack='abyssal'] .slot-cd { border-radius: 50%; }
+body[data-pack='abyssal'] .slot-key { background: none; color: var(--gold); font-family: var(--display); letter-spacing: 0.15em; text-shadow: var(--o2); top: -16px; }
+body[data-pack='abyssal'] .slot-name { font-family: var(--display); letter-spacing: 0.12em; font-size: 9px; color: var(--paper2); background: none; text-shadow: var(--o2); bottom: -18px; }
+body[data-pack='abyssal'] .slot-lv { left: 14px; right: 14px; bottom: 7px; }
+body[data-pack='abyssal'] .slot-lv i { height: 2px; background: rgba(255, 255, 255, 0.12); }
+body[data-pack='abyssal'] .slot-lv i.on { background: var(--gold); box-shadow: 0 0 4px var(--gold); }
+body[data-pack='abyssal'] .xpwrap .lvl { width: 44px; height: 44px; clip-path: none; border-radius: 50%; background: radial-gradient(circle, #2a2026, #09070a); color: var(--gold); border: 1px solid var(--gold); box-shadow: 0 0 16px rgba(201, 164, 90, 0.35); font-family: var(--display); }
+body[data-pack='abyssal'] .xpwrap .lvl b { font-size: 18px; }
+body[data-pack='abyssal'] .xpwrap .lvl span { font-size: 8px; letter-spacing: 0.2em; }
+/* announcements and title cards: engraved, slow, centred */
+body[data-pack='abyssal'] .ann { font-family: var(--display); font-style: normal; letter-spacing: 0.32em; font-size: 17px; color: var(--c); background: none; text-shadow: var(--o3); padding: 6px 40px; border-top: var(--rule); border-bottom: var(--rule); transform: none; clip-path: none; box-shadow: none; animation: abyssAnn 3.5s ease forwards; }
+body[data-pack='abyssal'] .ann::after { display: none; }
+body[data-pack='abyssal'] .ann-boss { font-size: 22px; --c: #ff5a68; }
+body[data-pack='abyssal'] .ann-tide { --c: #ff5a68; font-size: 20px; animation: abyssAnn 3.5s ease forwards; }
+body[data-pack='abyssal'] .tc-band { transform: none; margin: 0; background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.75) 25%, rgba(0, 0, 0, 0.75) 75%, transparent); border: 0; box-shadow: none; animation: abyssCard 4.6s ease forwards; padding: 26px 0; }
+body[data-pack='abyssal'] .tc-band::before { display: none; }
+body[data-pack='abyssal'] .tc-tag { transform: none; background: none; color: var(--gold); font-family: var(--display); letter-spacing: 0.6em; font-size: 12px; box-shadow: none; }
+body[data-pack='abyssal'] .tc-name { font-family: var(--display); font-style: normal; font-weight: 400; letter-spacing: 0.18em; text-transform: uppercase; color: var(--paper); text-shadow: var(--o3); font-size: clamp(30px, 5vw, 64px); }
+body[data-pack='abyssal'] .tc-name i { animation: abyssLetter 1.2s calc(0.2s + var(--i) * 0.05s) ease backwards; }
+body[data-pack='abyssal'] .tc-sub { font-family: var(--body); font-style: italic; font-weight: 500; letter-spacing: 0.05em; color: var(--paper2); }
+body[data-pack='abyssal'] #titlecard.boss .tc-band { background: linear-gradient(90deg, transparent, rgba(40, 0, 6, 0.8) 25%, rgba(40, 0, 6, 0.8) 75%, transparent); }
+body[data-pack='abyssal'] #titlecard.boss .tc-tag { background: none; color: #ff5a68; }
+body[data-pack='abyssal'] .tc-tape { display: none; }
+/* screens */
+body[data-pack='abyssal'] .screen { background: radial-gradient(ellipse at center, rgba(4, 2, 6, 0.35), rgba(2, 1, 3, 0.9)); }
+body[data-pack='abyssal'] .screen::before { display: none; }
+body[data-pack='abyssal'] #menu { background: linear-gradient(90deg, rgba(2, 1, 3, 0.92) 0%, rgba(2, 1, 3, 0.55) 38%, rgba(2, 1, 3, 0) 62%); }
+body[data-pack='abyssal'] .menu-fx { display: none; }
+body[data-pack='abyssal'] .logo-a { font-family: var(--display); font-style: normal; font-weight: 400; letter-spacing: 0.16em; font-size: clamp(44px, 7vw, 92px); color: var(--paper); text-shadow: 0 0 30px rgba(179, 18, 42, 0.35), var(--o3); animation: abyssFade 2.2s ease backwards; }
+body[data-pack='abyssal'] .logo-b { font-family: var(--display); letter-spacing: 0.9em; font-size: clamp(16px, 2.2vw, 26px); background: none; border: 0; box-shadow: none; transform: none; color: var(--gold); margin: 10px 0 0 6px; padding: 0; text-shadow: var(--o2); animation: abyssFade 2.2s 0.5s ease backwards; }
+body[data-pack='abyssal'] .logo-slash { left: 0; top: auto; bottom: -14px; width: 70%; height: 1px; clip-path: none; background: linear-gradient(90deg, var(--gold), transparent); animation: abyssFade 2.2s 0.8s ease backwards; }
+body[data-pack='abyssal'] .tagline { font-family: var(--body); font-size: 19px; font-weight: 500; letter-spacing: 0.03em; color: var(--paper2); text-shadow: var(--o2); margin-top: 26px; }
+body[data-pack='abyssal'] .btn { font-family: var(--display); letter-spacing: 0.28em; font-size: 15px; color: var(--paper); background: none; border: 0; border-top: 1px solid transparent; border-bottom: 1px solid transparent; box-shadow: none; transform: none; text-shadow: var(--o2); padding: 9px 4px; transition: color 0.25s, letter-spacing 0.35s, border-color 0.3s; clip-path: none; }
+body[data-pack='abyssal'] .btn::before { content: '◆'; left: -22px; font-size: 9px; color: var(--accent); transform: translateY(-50%); }
+body[data-pack='abyssal'] .btn:hover, body[data-pack='abyssal'] .btn:focus-visible { background: none; color: #fff; transform: none; box-shadow: none; letter-spacing: 0.34em; border-color: color-mix(in srgb, var(--gold) 50%, transparent); }
+body[data-pack='abyssal'] .btn:active { transform: none; box-shadow: none; color: var(--gold); }
+body[data-pack='abyssal'] .btn.big { font-size: 21px; color: var(--paper); background: none; box-shadow: none; text-shadow: 0 0 18px rgba(179, 18, 42, 0.8), var(--o2); padding: 12px 4px; }
+body[data-pack='abyssal'] .btn.big:hover { background: none; color: #fff; box-shadow: none; }
+body[data-pack='abyssal'] .btn.ghost { color: var(--paper2); border-color: transparent; box-shadow: none; }
+body[data-pack='abyssal'] .btn.danger { color: #ff6a78; }
+body[data-pack='abyssal'] .echo-count { color: var(--gold); font-family: var(--display); }
+body[data-pack='abyssal'] .controls { font-family: var(--body); font-size: 15px; font-weight: 600; color: var(--paper2); text-shadow: var(--o2); }
+body[data-pack='abyssal'] .panel { color: var(--paper); background: var(--glass); border: 0; border-top: var(--rule); border-bottom: var(--rule); box-shadow: 0 20px 80px rgba(0, 0, 0, 0.7); transform: none; backdrop-filter: blur(6px); }
+body[data-pack='abyssal'] .panel::after { display: none; }
+body[data-pack='abyssal'] .panel h2 { position: static; margin: -18px 0 18px; text-align: center; background: none; border: 0; box-shadow: none; transform: none; font-family: var(--display); font-style: normal; letter-spacing: 0.4em; font-size: 22px; color: var(--paper); text-shadow: var(--o3); }
+body[data-pack='abyssal'] h2.blood { color: #ff5a68 !important; background: none !important; font-size: 26px !important; }
+body[data-pack='abyssal'] .panel label { font-family: var(--body); font-size: 17px; }
+body[data-pack='abyssal'] .panel select, body[data-pack='abyssal'] .panel input { background: rgba(0, 0, 0, 0.5); color: var(--paper); border: var(--rule); box-shadow: none; font-family: var(--body); accent-color: var(--gold); }
+body[data-pack='abyssal'] .panel .btn.ghost { color: var(--paper2); }
+body[data-pack='abyssal'] .panel .btn.ghost:hover { color: #fff; background: none; }
+body[data-pack='abyssal'] .panel .muted { color: var(--muted); }
+body[data-pack='abyssal'] .go-grid div { border-bottom: 1px solid rgba(201, 164, 90, 0.18); }
+body[data-pack='abyssal'] .go-grid b { color: var(--gold); font-family: var(--display); }
+body[data-pack='abyssal'] .go-echoes b { clip-path: none; background: none; color: var(--gold); border: var(--rule); border-radius: 50%; padding: 18px 24px; }
+/* offers: tarot-like cards */
+body[data-pack='abyssal'] #offers { background: radial-gradient(ellipse at center, rgba(30, 10, 20, 0.6), rgba(2, 0, 3, 0.95) 75%); }
+body[data-pack='abyssal'] #offers::after { display: none; }
+body[data-pack='abyssal'] .offers-head h2 { font-family: var(--display); font-style: normal; letter-spacing: 0.4em; font-size: clamp(26px, 4vw, 44px); background: none; color: var(--paper); text-shadow: var(--o3); box-shadow: none; transform: none; clip-path: none; border: 0; }
+body[data-pack='abyssal'] .offers-head p { background: none; border: 0; box-shadow: none; color: var(--paper2); font-family: var(--body); transform: none; }
+body[data-pack='abyssal'] .card { background: linear-gradient(180deg, #19141a, #0b090c); color: var(--paper); border: 1px solid color-mix(in srgb, var(--rc) 60%, transparent); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.7), inset 0 0 0 5px rgba(0, 0, 0, 0.6), inset 0 0 0 6px color-mix(in srgb, var(--gold) 30%, transparent); border-radius: 6px; }
+body[data-pack='abyssal'] .card:hover, body[data-pack='abyssal'] .card:focus-visible { box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 30px color-mix(in srgb, var(--rc) 45%, transparent), inset 0 0 0 5px rgba(0, 0, 0, 0.6), inset 0 0 0 6px var(--gold); }
+body[data-pack='abyssal'] .card-glow { background: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--rc) 55%, transparent), transparent 75%); border-bottom: 0; }
+body[data-pack='abyssal'] .card-rarity { font-family: var(--display); letter-spacing: 0.3em; font-size: 12px; text-shadow: var(--o2); color: var(--rc); }
+body[data-pack='abyssal'] .pips i { transform: none; border: 0; height: 2px; background: rgba(255, 255, 255, 0.15); }
+body[data-pack='abyssal'] .pips i.on { background: var(--rc); }
+body[data-pack='abyssal'] .card-icon { background: radial-gradient(circle, rgba(60, 50, 56, 0.9), #08070a); border: 1px solid color-mix(in srgb, var(--rc) 70%, transparent); box-shadow: 0 0 24px color-mix(in srgb, var(--rc) 35%, transparent); }
+body[data-pack='abyssal'] .card-icon::before { display: none; }
+body[data-pack='abyssal'] .card-name { font-family: var(--display); font-style: normal; letter-spacing: 0.08em; font-size: 19px; }
+body[data-pack='abyssal'] .card-kind { transform: none; background: none; color: var(--gold); letter-spacing: 0.3em; border-top: var(--rule); border-bottom: var(--rule); }
+body[data-pack='abyssal'] .card-desc { font-family: var(--body); font-size: 16px; font-weight: 500; color: var(--paper2); }
+body[data-pack='abyssal'] .card-key { background: none; color: var(--gold); border: var(--rule); border-radius: 50%; }
+body[data-pack='abyssal'] .card-mark { background: rgba(255, 255, 255, 0.04); color: var(--paper2); border-color: rgba(255, 255, 255, 0.1); }
+body[data-pack='abyssal'] .card-mark.owned { background: color-mix(in srgb, var(--mc) 18%, transparent); border-color: var(--mc); }
+body[data-pack='abyssal'] .card.evolve { background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--ec) 25%, #120e13), #0b090c 70%); }
+body[data-pack='abyssal'] .card.evolve .card-glow { background: radial-gradient(ellipse at 50% 0%, var(--ec), transparent 75%); }
+body[data-pack='abyssal'] .card.r-legendary, body[data-pack='abyssal'] .card.r-eldritch { background: linear-gradient(135deg, #19141a 30%, color-mix(in srgb, var(--rc) 18%, #19141a) 50%, #0b090c 70%); background-size: 300% 300%; }
+body[data-pack='abyssal'] .offers-foot .muted { color: var(--paper2); text-shadow: var(--o2); font-family: var(--body); }
+body[data-pack='abyssal'] #vignette { display: none; }
+@keyframes abyssPulse { 50% { box-shadow: 0 0 0 1px var(--gold), 0 0 18px var(--gold); } }
+@keyframes abyssSheen { to { background-position: -200% 0; } }
+@keyframes abyssFade { from { opacity: 0; filter: blur(8px); } }
+@keyframes abyssLetter { from { opacity: 0; filter: blur(10px); transform: translateY(6px); } }
+@keyframes abyssAnn { 0% { opacity: 0; letter-spacing: 0.6em; } 12% { opacity: 1; letter-spacing: 0.32em; } 80% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes abyssCard { 0% { opacity: 0; } 12% { opacity: 1; } 82% { opacity: 1; } 100% { opacity: 0; } }
+
+/* asset streaming indicator */
+#loading { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 12; width: min(320px, 60vw); pointer-events: none; text-align: center; font-family: var(--display); font-size: 10px; letter-spacing: 0.4em; text-transform: uppercase; color: var(--paper2, #b9ad98); transition: opacity 1.2s; }
+#loading i { display: block; height: 1px; margin-bottom: 8px; background: linear-gradient(90deg, var(--gold, #c9a45a) calc(var(--k, 0) * 100%), rgba(255, 255, 255, 0.12) 0); }
+#loading.done { opacity: 0; }
+
+/* ------------------------------------------------------------------ menu UX (all packs) */
+.menu-desc { min-height: 1.4em; margin: 2px 0 6px; font-weight: 600; font-style: italic; color: var(--paper); opacity: 0.85; text-shadow: 1px 1px 0 var(--ink); }
+.navhint { position: fixed; right: 26px; bottom: 20px; z-index: 11; pointer-events: none; font-family: var(--body); font-size: 13px; font-weight: 600; letter-spacing: 0.04em; color: var(--paper); opacity: 0.7; text-shadow: 1px 1px 0 var(--ink); }
+.navhint b { margin: 0 4px 0 14px; font-family: var(--display); font-weight: 400; color: var(--gold); }
+.tabs { display: flex; gap: 6px; margin: 0 0 16px; border-bottom: 3px solid var(--ink); }
+.tab { pointer-events: auto; cursor: pointer; font-family: var(--display); font-size: 15px; letter-spacing: 0.06em; text-transform: uppercase; padding: 6px 12px 4px; background: transparent; color: var(--ink); border: 0; border-bottom: 4px solid transparent; margin-bottom: -3px; }
+.tab.on { border-bottom-color: var(--accent); color: var(--accent); }
+.tab:focus-visible { outline: 2px solid var(--accent); }
+.tab-page { display: flex; flex-direction: column; gap: 12px; min-height: 190px; }
+.settings-panel { min-width: min(560px, 92vw); }
+.pause-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 22px; margin-bottom: 8px; font-weight: 700; font-size: 14px; }
+.pause-stats div { display: flex; justify-content: space-between; gap: 10px; }
+.pause-stats b { font-family: var(--display); font-weight: 400; color: var(--accent); }
+.credits { max-width: min(720px, 92vw); max-height: 86vh; overflow: auto; }
+.credits h3 { margin: 14px 0 2px; font-family: var(--display); font-weight: 400; letter-spacing: 0.06em; font-size: 16px; }
+.credits p { margin: 2px 0 6px; line-height: 1.4; }
+#controls .controls { color: var(--ink); text-shadow: none; }
+.panel .btn.back { margin-top: 10px; }
+.setting-note { margin: 0; }
+
+/* ------------------------------------------------------------------ Abyssal Cinematic: AAA layout
+   Vitals bottom-left, abilities bottom-right, boss bar low-centre, a single quiet objective line at the top and a
+   thin experience rule along the bottom edge. Secondary information recedes when nothing is happening. */
+body[data-pack='abyssal'] #hud .hud-tl { top: auto; left: 40px; bottom: 46px; }
+body[data-pack='abyssal'] .hud-bars { width: min(300px, 34vw); }
+body[data-pack='abyssal'] .bar.hp { margin-top: 0; margin-bottom: 10px; height: 8px; }
+body[data-pack='abyssal'] .bar.hp span { transform: none; left: auto; right: -34px; top: -4px; font-family: var(--display); font-size: 13px; letter-spacing: 0.06em; }
+body[data-pack='abyssal'] .bar.ult { margin-bottom: 8px; width: 74%; height: 4px; }
+body[data-pack='abyssal'] .bar.ult span { transform: none; top: -16px; font-size: 9px; letter-spacing: 0.32em; opacity: 0; transition: opacity 0.4s; }
+body[data-pack='abyssal'] .bar.ult.ready span { opacity: 1; color: var(--gold); }
+body[data-pack='abyssal'] #ult-label kbd { font-size: 9px; padding: 1px 4px; }
+body[data-pack='abyssal'] .bar.dodge { width: 30%; height: 2px; }
+body[data-pack='abyssal'] #buffs { font-family: var(--display); font-size: 11px; letter-spacing: 0.2em; color: var(--gold); text-shadow: var(--o2); }
+body[data-pack='abyssal'] #buffs .buff { background: none; border: 0; box-shadow: none; transform: none; padding: 0; }
+body[data-pack='abyssal'] .hud-tr { top: 26px; right: 40px; gap: 6px; transition: opacity 0.8s; }
+body[data-pack='abyssal'] .hud-tr .stats { display: flex; gap: 14px; }
+body[data-pack='abyssal'] .chip { background: none; box-shadow: none; padding: 0; font-size: 12px; letter-spacing: 0.08em; text-shadow: var(--o2); color: var(--paper2); }
+body[data-pack='abyssal'] #objective { top: 24px; background: none; border: 0; box-shadow: none; padding: 0; font-family: var(--body); font-size: 17px; font-weight: 600; letter-spacing: 0.03em; text-shadow: var(--o3); color: var(--paper); white-space: nowrap; transition: opacity 0.8s; }
+body[data-pack='abyssal'] #objective::after { content: ''; display: block; height: 1px; margin: 6px auto 0; width: 60%; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--gold) 60%, transparent), transparent); }
+body[data-pack='abyssal'] #wave { align-items: flex-end; margin-top: 4px; }
+body[data-pack='abyssal'] .wave-bar { width: 120px; }
+body[data-pack='abyssal'] #bossbar { top: auto; bottom: 128px; width: min(720px, 60vw); animation: abyssFade 1.4s ease backwards; }
+body[data-pack='abyssal'] #bossbar #boss-name { margin-bottom: 8px; }
+body[data-pack='abyssal'] #slots { left: auto; right: 44px; bottom: 54px; transform: none; gap: 18px; }
+body[data-pack='abyssal'] .slot { width: 58px; height: 58px; }
+body[data-pack='abyssal'] .slot:first-child { width: 70px; height: 70px; }
+body[data-pack='abyssal'] .slot .slot-name { opacity: 0; transition: opacity 0.3s; }
+body[data-pack='abyssal'] #hud:not(.calm) .slot.fired .slot-name, body[data-pack='abyssal'] .slot:hover .slot-name { opacity: 1; }
+body[data-pack='abyssal'] .xpwrap { padding: 0; gap: 0; }
+body[data-pack='abyssal'] .xpwrap .lvl { position: absolute; left: 40px; bottom: 16px; width: 26px; height: 26px; }
+body[data-pack='abyssal'] .xpwrap .lvl span { display: none; }
+body[data-pack='abyssal'] .xpwrap .lvl b { font-size: 13px; }
+body[data-pack='abyssal'] .bar.xp { height: 2px; box-shadow: none; background: rgba(255, 255, 255, 0.06); }
+body[data-pack='abyssal'] #announce { top: 30%; }
+body[data-pack='abyssal'] #hud.calm .hud-tr, body[data-pack='abyssal'] #hud.calm #slots, body[data-pack='abyssal'] #hud.calm .bar.ult, body[data-pack='abyssal'] #hud.calm .bar.dodge { opacity: 0.32; }
+body[data-pack='abyssal'] #hud.calm #objective { opacity: 0.7; }
+body[data-pack='abyssal'] #hud #slots, body[data-pack='abyssal'] #hud .bar.ult, body[data-pack='abyssal'] #hud .bar.dodge { transition: opacity 0.8s; }
+body[data-pack='abyssal'] #hud.wiping { opacity: 0; transition: opacity 0.5s; }
+/* menu UX */
+body[data-pack='abyssal'] .menu-desc { font-family: var(--body); font-style: italic; font-weight: 500; font-size: 17px; color: var(--paper2); text-shadow: var(--o2); margin-top: 8px; min-height: 1.5em; }
+body[data-pack='abyssal'] .menu-buttons { gap: 2px; margin: 34px 0 6px; }
+body[data-pack='abyssal'] #menu-stats { font-family: var(--display); font-size: 11px; letter-spacing: 0.2em; color: var(--muted); }
+body[data-pack='abyssal'] .navhint { font-family: var(--display); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--paper2); opacity: 0.75; text-shadow: var(--o2); right: 40px; bottom: 30px; }
+body[data-pack='abyssal'] .navhint b { font-family: var(--display); color: var(--gold); border: var(--rule); border-radius: 3px; padding: 1px 6px; margin-left: 18px; }
+body[data-pack='abyssal'] .tabs { border-bottom: 1px solid rgba(201, 164, 90, 0.25); justify-content: center; gap: 22px; }
+body[data-pack='abyssal'] .tab { font-family: var(--display); letter-spacing: 0.28em; font-size: 11px; color: var(--paper2); border-bottom: 1px solid transparent; margin-bottom: -1px; padding: 8px 2px; }
+body[data-pack='abyssal'] .tab.on, body[data-pack='abyssal'] .tab:hover, body[data-pack='abyssal'] .tab:focus-visible { color: var(--paper); border-bottom-color: var(--gold); outline: none; }
+body[data-pack='abyssal'] .tab-page label { padding: 8px 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-weight: 600; letter-spacing: 0.02em; }
+body[data-pack='abyssal'] .tab-page label:focus-within { background: linear-gradient(90deg, rgba(201, 164, 90, 0.1), transparent); }
+body[data-pack='abyssal'] .panel input[type='range'] { width: 46%; }
+body[data-pack='abyssal'] .pause-stats { font-family: var(--body); font-size: 16px; font-weight: 500; color: var(--paper2); margin: 0 0 16px; padding-bottom: 12px; border-bottom: 1px solid rgba(201, 164, 90, 0.18); }
+body[data-pack='abyssal'] .pause-stats b { color: var(--paper); font-family: var(--display); font-size: 14px; }
+body[data-pack='abyssal'] #pause .panel { min-width: 380px; }
+body[data-pack='abyssal'] #pause .panel h2 { font-size: 22px; animation: none; }
+body[data-pack='abyssal'] .credits { font-family: var(--body); font-size: 16px; color: var(--paper2); }
+body[data-pack='abyssal'] .credits h3 { color: var(--gold); font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; }
+body[data-pack='abyssal'] #controls .controls { color: var(--paper); text-shadow: none; font-size: 16px; }
+body[data-pack='abyssal'] .panel .btn { align-self: center; }
+body[data-pack='abyssal'] .screen:not(.hidden) .panel { animation: abyssPanel 0.45s ease backwards; }
+body[data-pack='abyssal'] .btn:focus-visible::before, body[data-pack='abyssal'] .btn:hover::before { opacity: 1; }
+body[data-pack='abyssal'] .card:focus-visible { outline: none; transform: translateY(-10px); }
+body[data-pack='abyssal'] select:focus-visible, body[data-pack='abyssal'] input:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; }
+@keyframes abyssPanel { from { opacity: 0; transform: translateY(10px); filter: blur(4px); } }
+@media (max-width: 760px) {
+  body[data-pack='abyssal'] #slots { right: 16px; gap: 10px; }
+  body[data-pack='abyssal'] #hud .hud-tl { left: 16px; }
+  body[data-pack='abyssal'] .hud-tr { right: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body[data-pack='abyssal'] * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
