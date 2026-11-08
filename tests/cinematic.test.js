@@ -81,3 +81,48 @@ test('every realm has a cinematic look whose weather states exist', () => {
   }
   for (const q of Object.values(QUALITY)) assert.ok(q.scale > 0 && q.scale <= 1 && q.shadow >= 1024);
 });
+
+// ------------------------------------------------------------------ dynamic resolution
+import { AdaptiveScaler } from '../src/gfx/adaptive.js';
+
+/** Feed `secs` of frames at interval `dt`, returning the scale at the end. */
+function run(s, dt, secs) { for (let t = 0; t < secs; t += dt) s.update(dt); return s.scale; }
+
+test('dynamic resolution steps down under sustained slow frames, never below its floor', () => {
+  const s = new AdaptiveScaler({ max: 1, min: 0.5 });
+  run(s, 0.05, 2.9);
+  assert.equal(s.scale, 1, 'warm-up leaves the scale alone');
+  let low = 1;
+  for (let t = 0; t < 30; t += 0.05) { s.update(0.05); low = Math.min(low, s.scale); }
+  assert.equal(low, 0.5);
+  assert.equal(s.scale, 0.5);
+});
+
+test('a single hitch does not change quality', () => {
+  const s = new AdaptiveScaler({ max: 0.9 });
+  run(s, 1 / 60, 5);
+  s.update(0.4);
+  run(s, 1 / 60, 3);
+  assert.equal(s.scale, 0.9);
+});
+
+test('a steady 60 fps display keeps the full preset', () => {
+  const s = new AdaptiveScaler({ max: 0.9 });
+  assert.equal(run(s, 1 / 60, 60), 0.9);
+});
+
+test('after a slow spell the scale climbs back once the cap lapses', () => {
+  const s = new AdaptiveScaler({ max: 1, min: 0.5, holdCap: 30 });
+  run(s, 0.05, 6);
+  const dropped = s.scale;
+  assert.ok(dropped < 1);
+  run(s, 1 / 60, 10);
+  assert.ok(s.scale < 1, 'held below the level that was too slow');
+  run(s, 1 / 60, 45);
+  assert.equal(s.scale, 1);
+});
+
+test('disabled dynamic resolution pins the preset', () => {
+  const s = new AdaptiveScaler({ max: 0.75, enabled: false });
+  assert.equal(run(s, 0.1, 20), 0.75);
+});

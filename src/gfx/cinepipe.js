@@ -5,6 +5,12 @@ import * as S from './shaders.js';
 import * as C from './cinematic.js';
 import { Mannequin } from './skinned.js';
 import { mat4LookAt, mat4Ortho, mat4Mul, mat4Invert } from '../core/math.js';
+import { AdaptiveScaler } from './adaptive.js';
+
+// highlights above this HDR value feed the bloom; everything else stays sharp
+const BLOOM_THRESHOLD = 1.2;
+// strength of the anamorphic lens streaks (per-look override: look.streak)
+const STREAK = 0.35;
 
 const U_ALB = 0, U_NRM = 1, U_ARM = 2, U_SHADOW = 3, U_ENV = 4, U_BONES = 5, U_DEPTH = 6, U_MISC = 7;
 
@@ -91,6 +97,7 @@ export class CinePipe {
     this.dust = 0;
     this.gust = 0;
     this.cloud = 0.6;
+    this.scaler = new AdaptiveScaler({ enabled: R.adaptive !== false });
     this._dummyTextures();
     this._precipBuffers(12000);
     this.setQuality(R.gfx || 'high');
@@ -202,8 +209,19 @@ export class CinePipe {
   setQuality(q) {
     this.quality = C.QUALITY[q] || C.QUALITY.high;
     this.setShadowSize(this.quality.shadow);
+    this.scaler.reset(this.quality.scale);
     this.w = 0; // force target rebuild
   }
+
+  /** Dynamic resolution on or off (off pins the render scale to the quality preset). */
+  setAdaptive(on) {
+    this.R.adaptive = !!on;
+    this.scaler.enabled = !!on;
+    if (!on) this.scaler.scale = this.scaler.max;
+  }
+
+  /** Current render scale (1 = the canvas resolution); changes when dynamic resolution is on. */
+  get renderScale() { return this.scaler.scale; }
 
   setShadowSize(n) {
     const gl = this.gl;
@@ -249,7 +267,8 @@ export class CinePipe {
   _targets(w, h) {
     if (this.w === w && this.h === h && this.sceneFB) return;
     const gl = this.gl;
-    for (const t of this._owned || []) (gl.isTexture(t) ? gl.deleteTexture(t) : gl.deleteFramebuffer(t));
+    // textures and framebuffers are freed separately (WebGL throws if a framebuffer is passed to isTexture)
+    for (const t of this._owned || []) (t instanceof WebGLFramebuffer ? gl.deleteFramebuffer(t) : gl.deleteTexture(t));
     const own = (this._owned = []);
     const T = (...a) => { const t = tex2D(gl, ...a); own.push(t); return t; };
     const F = (...a) => { const f = fbo(gl, ...a); own.push(f); return f; };
@@ -327,6 +346,7 @@ export class CinePipe {
     gl.uniform1f(p.u.u_wet, this.wet);
     gl.uniform1f(p.u.u_dust, this.dust);
     gl.uniform3fv(p.u.u_dustCol, look.dust);
+    gl.uniform3fv(p.u.u_rimCol, this.rimCol);
     gl.uniform3fv(p.u.u_matAvg, this.matAvg);
     gl.uniform1f(p.u.u_texOn, this.texOn);
     gl.uniform1f(p.u.u_tintMix, look.tintMix);
@@ -368,20 +388,14 @@ export class CinePipe {
     if (lit) gl.uniform1f(p.u.u_terrain, 0);
   }
 
-  _skinPart(p, look, part) {
-    const gl = this.gl;
-    const c = part.joints ? look.joint : look.main;
-    gl.uniform3fv(p.u.u_tint, c);
-    gl.uniform1f(p.u.u_emis, part.joints ? look.jointEmis || 0 : look.mainEmis || 0);
-    const m = part.joints ? look.jointMat : look.mainMat;
-    gl.uniform4f(p.u.u_matp, m ?? -1, part.joints ? (look.jointRough ?? -1) : (look.rough ?? -1), part.joints ? (look.jointMetal ?? -1) : (look.metal ?? -1), look.texScale || 2.2);
-  }
-
   // ------------------------------------------------------------ the frame
   render(env, dt) {
     const gl = this.gl, R = this.R, look = R.look, q = this.quality;
     const cw = R.canvas.width, ch = R.canvas.height;
-    const w = Math.max(160, Math.round(cw * q.scale)), h = Math.max(120, Math.round(ch * q.scale));
+    // the frame interval is the real one (the simulation clamps dt, the scaler must see hitches)
+    const sc = this.scaler.update(R.frameInterval ?? dt);
+    const w = Math.max(160, Math.round(cw * sc)), h = Math.max(120, Math.round(ch * sc));
+    this.rimCol = env.rimCol || [0.5, 0.5, 0.6];
     this._targets(w, h);
     this.nl = R._packLights();
     this._setupLight(env, look);
@@ -408,7 +422,7 @@ export class CinePipe {
     if (mq && mq.queue.length) {
       p = this.skinShadow.use();
       gl.uniformMatrix4fv(p.u.u_vp, false, this.shadowVP);
-      mq.draw(p, U_BONES, null);
+      mq.draw(p, U_BONES);
     }
     gl.disable(gl.POLYGON_OFFSET_FILL);
 
@@ -456,7 +470,7 @@ export class CinePipe {
       p = this.skin.use();
       this._common(p);
       gl.uniform1f(p.u.u_terrain, 0);
-      mq.draw(p, U_BONES, (pp, lk, part) => this._skinPart(pp, lk, part));
+      mq.draw(p, U_BONES);
     }
     // foliage
     const f = R.foliage;
@@ -581,7 +595,7 @@ export class CinePipe {
       gl.bindTexture(gl.TEXTURE_2D, src);
       gl.uniform2f(p.u.u_texel, 1 / sw, 1 / shh);
       gl.uniform1f(p.u.u_first, i === 0 ? 1 : 0);
-      gl.uniform1f(p.u.u_threshold, 0);
+      gl.uniform1f(p.u.u_threshold, i === 0 ? BLOOM_THRESHOLD : 0);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       src = b.tex; sw = b.w; shh = b.h;
     });
@@ -633,6 +647,7 @@ export class CinePipe {
     gl.uniform1f(p.u.u_time, R.time);
     gl.uniform1f(p.u.u_exposure, look.exposure * (pp.exposure ?? 1) * (1 + this.flash * 0.25));
     gl.uniform1f(p.u.u_bloomAmt, look.bloom * (1 + (pp.bloomBoost || 0)));
+    gl.uniform1f(p.u.u_streak, look.streak ?? STREAK);
     gl.uniform1f(p.u.u_dirt, look.dirt);
     gl.uniform1f(p.u.u_aberr, pp.aberr);
     gl.uniform1f(p.u.u_damage, pp.damage);

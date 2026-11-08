@@ -17,6 +17,8 @@ const types = {
   '.mp3': 'audio/mpeg',
   '.bin': 'application/octet-stream',
   '.md': 'text/markdown; charset=utf-8',
+  '.woff2': 'font/woff2',
+  '.txt': 'text/plain; charset=utf-8',
 };
 
 http.createServer((req, res) => {

@@ -46,6 +46,7 @@ uniform float u_flash;
 uniform float u_wet;
 uniform float u_dust;
 uniform vec3 u_dustCol;
+uniform vec3 u_rimCol;
 `;
 
 const PBR = `
@@ -129,6 +130,11 @@ vec3 shade(vec3 P, vec3 N, vec3 V, vec3 albedo, float rough, float metal, float 
   float horizon = clamp(1.0 + dot(R, N), 0.0, 1.0);
   float specOcc = clamp(pow(nv + ao, exp2(-16.0 * a - 1.0)) - 1.0 + ao, 0.0, 1.0);
   col += diff * irr * ao + pref * (f0 * ab.x + ab.y) * specOcc * horizon * horizon * mix(0.55, 1.0, sh);
+  // rim light: backlit silhouettes catch the realm's glow so bodies and edges read in the dark
+  // (only where the surface faces away from the key light, so lit surfaces keep their colour)
+  float backlit = clamp(dot(N, -u_keyDir) * 0.5 + 0.5, 0.0, 1.0);
+  // the glow is a bounce from the realm's light, so it scales with the surface's own albedo
+  col += (albedo * 0.8 + 0.04) * u_rimCol * pow(1.0 - nv, 5.0) * backlit * (1.0 - metal) * 0.9;
   return col;
 }
 `;
@@ -237,24 +243,37 @@ void main(){
   float layer = floor(v_mat.x + 0.5);
   float porous = 1.0;
   if (u_terrain > 0.5) {
-    // two-layer terrain: ground on flats, rock on slopes, broken up by noise and the occlusion map as height
+    // two-layer terrain: ground on flats, rock on slopes, broken up by noise. Only the layers a pixel blends are
+    // sampled, so open ground costs one material instead of two.
     float slope = 1.0 - Ng.y;
     float nz = fbm2(v_wpos.xz * 0.08);
-    Surf g = triSample(u_terrainMat.x, v_wpos, Ng, 0.24);
-    Surf r = triSample(u_terrainMat.y, v_wpos, Ng, 0.14);
-    float k = smoothstep(0.16, 0.34, slope + (nz - 0.5) * 0.22 + (r.ao - g.ao) * 0.18);
-    Surf s; s.albedo = mix(g.albedo, r.albedo, k); s.n = normalize(mix(g.n, r.n, k)); s.rough = mix(g.rough, r.rough, k); s.ao = mix(g.ao, r.ao, k); s.metal = 0.0;
+    float k = smoothstep(0.16, 0.34, slope + (nz - 0.5) * 0.22);
+    Surf s;
+    if (k <= 0.001) s = triSample(u_terrainMat.x, v_wpos, Ng, 0.24);
+    else if (k >= 0.999) s = triSample(u_terrainMat.y, v_wpos, Ng, 0.14);
+    else {
+      Surf g = triSample(u_terrainMat.x, v_wpos, Ng, 0.24);
+      Surf r = triSample(u_terrainMat.y, v_wpos, Ng, 0.14);
+      s.albedo = mix(g.albedo, r.albedo, k); s.n = normalize(mix(g.n, r.n, k)); s.rough = mix(g.rough, r.rough, k); s.ao = mix(g.ao, r.ao, k); s.metal = 0.0;
+    }
+    float layerG = k < 0.5 ? u_terrainMat.x : u_terrainMat.y;
     vec3 avg = mix(u_matAvg[int(u_terrainMat.x + 0.5)], u_matAvg[int(u_terrainMat.y + 0.5)], k);
     // the realm palette (vertex colour) tints the photographed detail
     vec3 tinted = s.albedo / max(avg, vec3(0.02)) * base;
+    // macro variation: the same material at a 32 m scale breaks up the repetition of the 4 m tile
+    vec3 macro = texture(u_albedo, vec3(v_wpos.xz * 0.031 + 0.37, layerG)).rgb / max(u_matAvg[int(layerG + 0.5)], vec3(0.02));
     albedo = mix(s.albedo * mix(vec3(1.0), base / max(dot(base, vec3(0.333)), 0.02) * 0.33, 0.6), tinted, u_tintMix) * (0.8 + 0.4 * nz);
+    albedo *= mix(vec3(1.0), clamp(macro, vec3(0.55), vec3(1.5)), 0.4);
     N = s.n; rough = s.rough; ao = s.ao;
     // glowing veins: their strength rides on the terrain normal's length (see meshes.terrainMesh glowFn)
     float acc = smoothstep(0.25, 1.0, length(v_nrm) - 1.0);
-    float pulse = 0.65 + 0.35 * sin(u_time * 1.7 + v_wpos.x * 0.15 + v_wpos.z * 0.11);
-    emis += toLinear(u_accent) * acc * pulse * u_veinGlow * (0.35 + 0.65 * smoothstep(0.4, 0.7, fbm2(v_wpos.xz * 0.6 + u_time * 0.05)));
-    // rain puddles collect on the flats
-    float puddle = smoothstep(0.55, 0.7, fbm2(v_wpos.xz * 0.11 + 3.1)) * smoothstep(0.12, 0.02, slope) * u_wet;
+    if (acc > 0.001) {
+      float pulse = 0.65 + 0.35 * sin(u_time * 1.7 + v_wpos.x * 0.15 + v_wpos.z * 0.11);
+      emis += toLinear(u_accent) * acc * pulse * u_veinGlow * (0.35 + 0.65 * smoothstep(0.4, 0.7, fbm2(v_wpos.xz * 0.6 + u_time * 0.05)));
+    }
+    // rain puddles collect on the flats; the noise is only evaluated when it can matter
+    float puddle = 0.0;
+    if (u_wet > 0.01 && slope < 0.12) puddle = smoothstep(0.55, 0.7, fbm2(v_wpos.xz * 0.11 + 3.1)) * smoothstep(0.12, 0.02, slope) * u_wet;
     if (puddle > 0.01) {
       // concentric raindrop ripples
       vec2 cell = floor(v_wpos.xz * 1.6);
@@ -272,8 +291,9 @@ void main(){
     vec3 ln = normalize(v_lnrm);
     float scale = v_mat.w > 0.0 ? v_mat.w : 0.6;
     Surf s = triSample(layer, lp, ln, scale);
+    // objects carry their own colour: the texture supplies the variation, the palette supplies the hue
     vec3 avg = u_matAvg[int(layer + 0.5)];
-    albedo = mix(s.albedo, s.albedo / max(avg, vec3(0.02)) * base, u_tintMix);
+    albedo = s.albedo / max(avg, vec3(0.02)) * base;
     vec3 nObj = s.n;
     N = normalize(v_ax0 * nObj.x + v_ax1 * nObj.y + v_ax2 * nObj.z);
     if (!gl_FrontFacing) N = -N;
@@ -332,11 +352,14 @@ layout(location=0) in vec3 a_pos;
 layout(location=1) in vec3 a_nrm;
 layout(location=2) in vec4 a_joints;
 layout(location=3) in vec4 a_weights;
+// per character, instanced: bone-texture row, colour + emissive, material (layer, roughness, metalness, scale)
+layout(location=4) in float a_row;
+layout(location=5) in vec4 a_tint;
+layout(location=6) in vec4 a_matp;
 uniform mat4 u_vp;
 uniform highp sampler2D u_bones;
-uniform float u_row;
 mat4 bone(float j){
-  int x = int(j) * 4, y = int(u_row);
+  int x = int(j) * 4, y = int(a_row);
   return mat4(texelFetch(u_bones, ivec2(x, y), 0), texelFetch(u_bones, ivec2(x + 1, y), 0), texelFetch(u_bones, ivec2(x + 2, y), 0), texelFetch(u_bones, ivec2(x + 3, y), 0));
 }
 mat4 skinMat(){
@@ -345,9 +368,6 @@ mat4 skinMat(){
 `;
 
 export const SKIN_VS = `${SKIN_HEAD}
-uniform vec3 u_tint;
-uniform float u_emis;
-uniform vec4 u_matp;
 out vec3 v_wpos;
 out vec3 v_nrm;
 out vec3 v_col;
@@ -366,9 +386,9 @@ void main(){
   vec3 n = c0 * a_nrm.x + c1 * a_nrm.y + c2 * a_nrm.z;
   v_wpos = wp.xyz;
   v_nrm = n;
-  v_col = u_tint;
-  v_emis = u_emis;
-  v_mat = u_matp;
+  v_col = a_tint.rgb;
+  v_emis = a_tint.a;
+  v_mat = a_matp;
   // bind-pose position as the texture space, so cloth/leather detail sticks to the body
   v_lpos = a_pos;
   v_lnrm = a_nrm;
@@ -924,6 +944,7 @@ uniform vec2 u_res;
 uniform float u_time;
 uniform float u_exposure;
 uniform float u_bloomAmt;
+uniform float u_streak;
 uniform float u_dirt;
 uniform float u_aberr;
 uniform float u_damage;
@@ -978,6 +999,10 @@ void main(){
   }
   vec3 bl = texture(u_bloom, uv).rgb;
   c += bl * u_bloomAmt;
+  // anamorphic streaks: a horizontal smear of the highlights (lightning, the eclipse corona, emissive crystals)
+  vec3 sk = vec3(0.0); float sw = 0.0;
+  for (int i = -4; i <= 4; i++) { float fi = float(i); float w = exp(-fi * fi * 0.18); sk += texture(u_bloom, uv + vec2(fi * 0.0065, 0.0)).rgb * w; sw += w; }
+  c += sk / sw * u_streak;
   // lens dirt lights up under strong bloom
   float dirt = fbm2(uv * vec2(9.0, 6.0) + 3.0) * smoothstep(0.55, 0.9, vnoise2(uv * 22.0)) + smoothstep(0.8, 1.0, vnoise2(uv * 70.0)) * 0.5;
   c += max(bl - vec3(0.45), vec3(0.0)) * dirt * u_dirt * 2.0;
@@ -1063,28 +1088,28 @@ export const LOOKS = {
   ashen: {
     hdri: 'dusk', envTint: [0.9, 0.75, 0.7], envInt: 0.2, keyCol: [1.0, 0.62, 0.4], keyInt: 2.2, keyMix: 0.35,
     fogCol: [0.3, 0.25, 0.25], fogAmb: 0.3, scatCol: [1.0, 0.62, 0.42], density: 0.015, heightFall: 0.09, baseH: -1, aniso: 0.5,
-    veinGlow: 1.4, tintMix: 0.45, exposure: 1.1, bloom: 0.07, dirt: 0.5, skyInt: 1.2, cloud: 0.8,
+    veinGlow: 1.4, tintMix: 0.45, exposure: 1.1, bloom: 0.18, dirt: 0.5, skyInt: 1.2, cloud: 0.8,
     grade: { lift: [0.0, 0.0, 0.01], gamma: [1.0, 0.98, 0.97], gain: [1.03, 0.99, 0.95], sat: 0.92, contrast: 1.12, shadow: [0.88, 0.95, 1.1], high: [1.08, 1.0, 0.9] },
     weather: ['ashfall', 'embers', 'dry_storm', 'clear'], dust: [0.42, 0.4, 0.4],
   },
   drowned: {
     hdri: 'overcast', envTint: [0.35, 0.8, 0.85], envInt: 0.2, keyCol: [0.45, 1.0, 0.9], keyInt: 1.7, keyMix: 0.2,
     fogCol: [0.05, 0.18, 0.21], fogAmb: 0.36, scatCol: [0.4, 1.0, 0.9], density: 0.02, heightFall: 0.06, baseH: 0, aniso: 0.6,
-    veinGlow: 1.4, tintMix: 0.5, exposure: 1.15, bloom: 0.09, dirt: 0.35, skyInt: 1.0, cloud: 0.6,
+    veinGlow: 1.4, tintMix: 0.5, exposure: 1.15, bloom: 0.18, dirt: 0.35, skyInt: 1.0, cloud: 0.6,
     grade: { lift: [0.0, 0.01, 0.02], gamma: [1.0, 1.0, 1.02], gain: [0.95, 1.02, 1.05], sat: 0.85, contrast: 1.1, shadow: [0.85, 1.0, 1.12], high: [1.0, 1.04, 1.0] },
     weather: ['rain', 'storm', 'mist', 'rain'], dust: [0.5, 0.6, 0.6],
   },
   starless: {
     hdri: 'night', envTint: [0.75, 0.6, 1.0], envInt: 0.22, keyCol: [0.75, 0.55, 1.0], keyInt: 2.0, keyMix: 0.5,
     fogCol: [0.13, 0.09, 0.22], fogAmb: 0.3, scatCol: [0.8, 0.6, 1.0], density: 0.011, heightFall: 0.07, baseH: -2, aniso: 0.6,
-    veinGlow: 1.1, tintMix: 0.55, exposure: 1.2, bloom: 0.09, dirt: 0.6, skyInt: 1.3, cloud: 0.3,
+    veinGlow: 1.1, tintMix: 0.55, exposure: 1.2, bloom: 0.18, dirt: 0.6, skyInt: 1.3, cloud: 0.3,
     grade: { lift: [0.01, 0.0, 0.03], gamma: [1.0, 1.0, 1.0], gain: [1.0, 0.97, 1.06], sat: 0.9, contrast: 1.12, shadow: [0.95, 0.9, 1.15], high: [1.04, 1.0, 1.04] },
     weather: ['voidsnow', 'starfall', 'clear', 'voidsnow'], dust: [0.55, 0.5, 0.7],
   },
   flesh: {
     hdri: 'blood', envTint: [1.0, 0.45, 0.42], envInt: 0.2, keyCol: [1.0, 0.7, 0.35], keyInt: 2.2, keyMix: 0.3,
     fogCol: [0.3, 0.1, 0.1], fogAmb: 0.32, scatCol: [1.0, 0.55, 0.4], density: 0.017, heightFall: 0.08, baseH: -1, aniso: 0.6,
-    veinGlow: 0.9, tintMix: 0.5, exposure: 1.05, bloom: 0.08, dirt: 0.5, skyInt: 1.15, cloud: 0.7,
+    veinGlow: 0.9, tintMix: 0.5, exposure: 1.05, bloom: 0.18, dirt: 0.5, skyInt: 1.15, cloud: 0.7,
     grade: { lift: [0.01, 0.0, 0.0], gamma: [1.0, 0.98, 0.98], gain: [1.02, 0.97, 0.95], sat: 0.85, contrast: 1.12, shadow: [0.92, 0.95, 1.08], high: [1.05, 1.0, 0.94] },
     weather: ['bloodrain', 'spores', 'storm', 'spores'], dust: [0.5, 0.25, 0.25],
   },
@@ -1094,7 +1119,7 @@ export const LOOKS = {
 export const QUALITY = {
   low: { scale: 0.6, shadow: 1024, fogSteps: 12, ao: false, fogLights: false, bloomLevels: 4, fxaa: true, foliage: 1, precip: 2500, dof: false, texSize: 256 },
   medium: { scale: 0.75, shadow: 2048, fogSteps: 18, ao: true, fogLights: false, bloomLevels: 5, fxaa: true, foliage: 1.4, precip: 5000, dof: true, texSize: 512 },
-  high: { scale: 0.9, shadow: 2048, fogSteps: 26, ao: true, fogLights: true, bloomLevels: 6, fxaa: true, foliage: 1.8, precip: 8000, dof: true, texSize: 512 },
+  high: { scale: 1, shadow: 2048, fogSteps: 26, ao: true, fogLights: true, bloomLevels: 6, fxaa: true, foliage: 1.8, precip: 8000, dof: true, texSize: 512 },
   ultra: { scale: 1, shadow: 4096, fogSteps: 36, ao: true, fogLights: true, bloomLevels: 6, fxaa: true, foliage: 2.2, precip: 12000, dof: true, texSize: 512 },
 };
 

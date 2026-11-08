@@ -35,6 +35,8 @@ function boot() {
   // art style: ?style=retro|requiem|sutra|lantern|requiem+neon… overrides the saved choice (handy for previews)
   // ("+" in a query string decodes to a space, so restore it for combination ids like requiem+neon)
   const urlStyle = (new URLSearchParams(location.search).get('style') || '').replace(/ /g, '+');
+  const adaptParam = new URLSearchParams(location.search).get('adaptive');
+  R.adaptive = adaptParam === null ? meta.data.settings.adaptive !== false : adaptParam !== '0';
   game.setStyle(urlStyle || meta.data.settings.style || DEFAULT_STYLE);
   ui.bind(game);
   // previews: ?dim=N starts a run directly in dimension N (0 Ashen, 1 Drowned, 2 Starless, 3 Flesh)
@@ -82,6 +84,7 @@ function boot() {
       const t0 = performance.now();
       game.update(dt);
       const t1 = performance.now();
+      R.frameInterval = real;
       game.render(dt);
       const t2 = performance.now();
       perf.update += (t1 - t0 - perf.update) * 0.05;

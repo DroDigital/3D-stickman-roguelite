@@ -63,3 +63,10 @@ Converted to MP3 and loudness-normalised.
 - **sfx-kit** by Wyzowl ([wyzowl/sfx-kit](https://github.com/wyzowl/sfx-kit)), CC0 1.0. Used for thunder, booms,
   rumbles, sub drops, cinematic drums/metal/slams, impacts, risers, reverse whooshes, shimmers, coins, locks, UI
   taps and materialise effects.
+
+## Fonts (`fonts/`) — SIL Open Font License 1.1
+
+- **Cinzel** by Natanael Gama, from [google/fonts](https://github.com/google/fonts/tree/main/ofl/cinzel).
+- **Cormorant Garamond** by Christian Thalmann, from [google/fonts](https://github.com/google/fonts/tree/main/ofl/cormorantgaramond).
+
+Subset to Latin and the UI's symbols and converted to WOFF2. Licence text in `fonts/OFL.txt`.

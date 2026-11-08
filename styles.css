@@ -1,3 +1,9 @@
+/* Bundled UI type (SIL Open Font License, see assets/fonts/OFL.txt). The cinematic pack's serif faces ship with the
+   game, so they look the same offline and on every platform. Subsets cover Latin text and the UI's symbols. */
+@font-face { font-family: 'Cinzel'; src: url('assets/fonts/Cinzel.woff2') format('woff2'); font-weight: 400 900; font-style: normal; font-display: block; }
+@font-face { font-family: 'Cormorant Garamond'; src: url('assets/fonts/CormorantGaramond.woff2') format('woff2'); font-weight: 300 700; font-style: normal; font-display: block; }
+@font-face { font-family: 'Cormorant Garamond'; src: url('assets/fonts/CormorantGaramond-Italic.woff2') format('woff2'); font-weight: 300 700; font-style: italic; font-display: block; }
+
 /* Anime HUD and UI. Everything is drawn with CSS: ink outlines, screentone (halftone dots), speed lines, slanted
    manga panels and starbursts. Colours come from the active art pack (body[data-pack], set by Game.setStyle). */
 :root {
