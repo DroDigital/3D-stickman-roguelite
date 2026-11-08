@@ -203,7 +203,9 @@ export class CinePipe {
     // normalise each HDRI to unit average irradiance so a realm's envInt means the same for every map
     const lum = h.sh[0] * 0.2126 + h.sh[1] * 0.7152 + h.sh[2] * 0.0722;
     const norm = 1 / Math.max(1e-4, lum);
-    return { tex: t, sh: h.sh.map((v) => v * norm), mips: Math.min(level, 7), norm };
+    // the blurriest roughness level keeps the same angular softness at any map width (512 px was tuned at LOD 7)
+    const maxLod = 7 + Math.max(0, Math.round(Math.log2(h.w / 512)));
+    return { tex: t, sh: h.sh.map((v) => v * norm), mips: Math.min(level, maxLod), norm };
   }
 
   setQuality(q) {

@@ -264,7 +264,8 @@ async function hdris() {
   fs.mkdirSync(dir, { recursive: true });
   for (const [id, name] of HDRIS) {
     const src = parseRGBE(await fetchCached(`${THREE}/${name}.hdr`));
-    const W = 512, Hh = 256;
+    // keep the 1k originals (1024 x 512) at native size: sharper reflections than the old 512 x 256 downsample
+    const W = src.w, Hh = src.h;
     const png = new PNG({ width: W, height: Hh });
     for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
       let r = 0, g = 0, b = 0, n = 0;

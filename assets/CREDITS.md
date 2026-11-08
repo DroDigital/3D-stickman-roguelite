@@ -33,7 +33,7 @@ PBR sets, packed as `<id>_albedo.jpg`, `<id>_normal.jpg` (OpenGL convention) and
 
 ## HDR environments (`hdri/`) — CC0 1.0, Poly Haven
 
-Downsampled to 512 × 256 and stored as RGBE-in-PNG. Mirrored in the
+Stored as RGBE-in-PNG at 1024 × 512 (the 1k originals, at native size). Mirrored in the
 [three.js examples](https://github.com/mrdoob/three.js/tree/dev/examples/textures/equirectangular).
 
 | Id | Source |
