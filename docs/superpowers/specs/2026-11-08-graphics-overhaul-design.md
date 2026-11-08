@@ -1,6 +1,6 @@
 # Graphics overhaul: voxel fog, horizon AO and sharper environments
 
-Status: design, written alongside the implementation. Each section lists what changes, what does not, and how it is checked.
+Status: design, written alongside the implementation. Sections 5 and 5b–5c record what was built. Each section lists what changes, what does not, and how it is checked.
 
 ## 1. Request and reading
 
@@ -59,9 +59,11 @@ The grid's cost depends on the preset, not on the render scale, so the adaptive 
 3. **Temporal filter.** A second half-resolution pass reprojects the previous accumulated AO (`RG16F`: AO and linear depth) with the previous view-projection. It rejects history when the depth differs by more than 5%, and blends `mix(history, raw, 0.15)` otherwise.
 4. **Apply.** The bilateral upsample in `FOG_APPLY_FS` reads the accumulated AO instead of the raw AO. The strength stays at 0.85 with the same curve.
 
-### Limits
+### Applied to indirect light only
 
-AO still multiplies the whole frame, as it does now. It is not applied to indirect light only, because the lit pass has no separate indirect term. Splitting that out needs a G-buffer, which this pass does not add.
+The lit shaders (terrain, props, characters and foliage) sample last frame's accumulated AO at the surface's reprojected position and dim only the ambient and indirect specular terms. Sunlit surfaces keep their colour, and the occlusion sits in the crevices, roots and under props. The fog apply no longer multiplies the whole frame by AO.
+
+The cost is one frame of latency. The reprojection hides it while the camera moves, and the depth test rejects history where the view has changed.
 
 ## 4. Environment maps at 1024 × 512
 
@@ -69,14 +71,28 @@ The four realm HDRIs (`dusk`, `overcast`, `night`, `blood`) come from the Poly H
 
 `tools/fetch-assets.mjs` gets the new HDRI size and the conversion. `assets/CREDITS.md` keeps the same CC0 credit.
 
-## 5. Shader polish (time-boxed)
+## 5. Shader polish
 
-If time allows, after sections 2–4 are verified:
+Implemented, gated by the quality flags (Medium and above):
 
-- Multi-scatter energy compensation for GGX specular on rough metals (Fdez-Agüera 2019, analytic approximation).
-- Micro detail: a procedural high-frequency normal and roughness perturbation in the triplanar terrain and prop shader, which hides the 512 px tiling at close range without new textures.
+- **Multi-scatter energy compensation** on the indirect specular term (Fdez-Agüera 2019): `1 + F0 × (1/E − 1)` with `E` from the existing split-sum table.
+- **Micro relief** in the triplanar terrain and prop shader: a procedural gradient at two finer scales perturbs the normal. Its strength fades with the texel footprint from `fwidth`, so it disappears before it can shimmer at a distance, and the 512 px tiling stops showing at close range.
+- **Contact shadows** (section 5b).
 
-Both are gated behind the existing quality flags so they can be switched off.
+## 5b. Contact shadows
+
+The sun term of every lit surface is multiplied by a short screen-space march: eight samples from the surface toward the key light, out to about 0.5 m. Each sample is reprojected with last frame's matrix and compared with last frame's depth buffer, in metres. A sample that sits behind the visible surface by 3–10 cm, and no more than 0.4–0.7 m, counts as occluded. The result is a crisp shadow where a foot, a hilt or a blade meets the ground. The shadow map is too coarse to show it.
+
+Last frame's depth is used because the depth copy is only written after the HDR pass. The cost is one frame of latency, and the same history reset rules as the AO apply.
+
+## 5c. Dense meadows and interaction mist
+
+Two things change the density of the air where the world reacts:
+
+- **Denser grass.** The tuft count per 4 m cell is multiplied by the quality preset (Low 1.5×, Medium 2.5×, High 4×, Ultra 5×). The meadow threshold is widened so most of the streamed ground grows grass. The instance budget rises from 16384 to 65536 tufts. Tall growths (kelp and cilia) keep a per-kind factor (0.45 and 0.7), so they never hide the hero from the camera. The grass shader and its bending are unchanged.
+- **Mist where the world reacts.** The meadow map (48 × 48 cells of 2 m, centred on the player and rebuilt every 6 m of movement) carries each cell's grass density and ground height. The fog grid adds extinction in the ground layer over every grass cell, with a height fall-off of about 0.8 m, drifting patches, and a feathered edge. Every push source (the hero, the footstep trail, blasts and nearby enemies, the same list that bends the grass) adds a pocket of extinction around it, thickest at ground level and fading with distance and height. Pockets follow each source's strength, so blasts burst and then fade. The hero and blasts still clear the view around themselves, because the holes are applied after the mist.
+
+The limits are the same as in section 2: the grid is temporally blended, so the mist lags a moving source by about ten frames, which reads as a trail.
 
 ## 6. Quality presets
 
