@@ -1,14 +1,14 @@
 // "Abyssal Cinematic" pipeline shaders: linear HDR, GGX physically based shading with image-based lighting from a
 // real HDRI (spherical-harmonic diffuse + prefiltered specular), soft directional shadows, triplanar PBR texture
-// arrays (Poly Haven / ambientCG), wet and ash-dusted surfaces, translucent foliage, soft particles, a volumetric
-// fog march with god rays and SSAO, physically based bloom, depth of field, ACES tonemapping with per-realm
-// grading, lens effects, and FXAA.
+// arrays (Poly Haven / ambientCG), wet and ash-dusted surfaces, translucent foliage, soft particles, the composite
+// and screen passes (fog apply, bloom, depth of field, ACES tonemapping with per-realm grading, lens effects, FXAA).
+// The voxel fog and horizon AO shaders live in volumetric.js.
 import { MAX_LIGHTS } from './shaders.js';
 
 const MAXL = MAX_LIGHTS;
 
 // ------------------------------------------------------------------ shared GLSL
-const COMMON = `
+export const COMMON = `
 const float PI = 3.14159265;
 vec3 toLinear(vec3 c){ return pow(max(c, vec3(0.0)), vec3(2.2)); }
 float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
@@ -47,6 +47,16 @@ uniform float u_wet;
 uniform float u_dust;
 uniform vec3 u_dustCol;
 uniform vec3 u_rimCol;
+// screen-space history from the previous frame: horizon AO (r) with view depth (g), the depth buffer itself,
+// and the matrix and camera planes that reproject into it
+uniform highp sampler2D u_sao;
+uniform highp sampler2D u_depthPrev;
+uniform mat4 u_prevVP;
+uniform vec2 u_nearFar;
+uniform float u_histOn;
+uniform float u_saoAmt;
+uniform float u_contactOn;
+uniform float u_microOn;
 `;
 
 const PBR = `
@@ -82,6 +92,34 @@ float shadowAt(vec3 wpos, vec3 n, float ndl){
   vec2 e = abs(q.xy - 0.5) * 2.0;
   return mix(sh, 1.0, smoothstep(0.82, 1.0, max(e.x, e.y)));
 }
+float linZ(float d){ float z = d * 2.0 - 1.0; return 2.0 * u_nearFar.x * u_nearFar.y / (u_nearFar.y + u_nearFar.x - z * (u_nearFar.y - u_nearFar.x)); }
+// horizon AO of the previous frame, reprojected to this surface. It only dims the indirect light, so sunlit surfaces keep
+// their colour and the occlusion sits in the crevices where the sky cannot reach.
+float saoIndirect(vec3 P){
+  if (u_histOn < 0.5 || u_saoAmt <= 0.0) return 1.0;
+  vec4 c = u_prevVP * vec4(P, 1.0);
+  if (c.w <= 0.0) return 1.0;
+  vec2 uv = c.xy / c.w * 0.5 + 0.5;
+  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return 1.0;
+  return mix(1.0, texture(u_sao, uv).r, u_saoAmt);
+}
+// contact shadow: a short screen-space march from the surface toward the sun against the previous depth buffer.
+// It catches the small shadows where a foot, a prop or a blade meets the ground, which the shadow map is too coarse for.
+float contactShadow(vec3 P, vec3 L){
+  if (u_contactOn < 0.5 || u_histOn < 0.5) return 1.0;
+  float occ = 0.0;
+  for (int i = 0; i < 8; i++) {
+    float t = 0.08 + float(i) * 0.06;
+    vec4 c = u_prevVP * vec4(P + L * t, 1.0);
+    if (c.w <= 0.0) break;
+    vec2 uv = c.xy / c.w * 0.5 + 0.5;
+    if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) break;
+    // how far behind the visible surface this sample lies, in metres
+    float behind = c.w - linZ(texture(u_depthPrev, uv).r);
+    occ += smoothstep(0.03, 0.1, behind) * (1.0 - smoothstep(0.4, 0.7, behind));
+  }
+  return 1.0 - 0.75 * clamp(occ / 3.0, 0.0, 1.0);
+}
 // full lighting for one surface point
 vec3 shade(vec3 P, vec3 N, vec3 V, vec3 albedo, float rough, float metal, float ao, float trans, out float keyShadow){
   rough = clamp(rough, 0.045, 1.0);
@@ -100,7 +138,7 @@ vec3 shade(vec3 P, vec3 N, vec3 V, vec3 albedo, float rough, float metal, float 
     float nh = max(dot(N, H), 0.0), vh = max(dot(V, H), 0.0);
     vec3 F = F_Schlick(f0, vh);
     vec3 spec = D_GGX(nh, a) * V_SG(nv, nl, a) * F;
-    col += (diff * (1.0 - F) / PI + spec) * kc * nl * sh;
+    col += (diff * (1.0 - F) / PI + spec) * kc * nl * sh * contactShadow(P, L);
   }
   // thin translucency (leaves, cloth, membranes): light bleeding through from behind
   if (trans > 0.0) col += diff * kc * trans * pow(clamp(dot(V, -L), 0.0, 1.0), 3.0) * (0.35 + 0.65 * sh) * 0.6;
@@ -129,7 +167,9 @@ vec3 shade(vec3 P, vec3 N, vec3 V, vec3 albedo, float rough, float metal, float 
   vec3 pref = envSpec(R, rough) * u_envTint * u_envInt * u_envSpec * (1.0 + u_flash * 1.5);
   float horizon = clamp(1.0 + dot(R, N), 0.0, 1.0);
   float specOcc = clamp(pow(nv + ao, exp2(-16.0 * a - 1.0)) - 1.0 + ao, 0.0, 1.0);
-  col += diff * irr * ao + pref * (f0 * ab.x + ab.y) * specOcc * horizon * horizon * mix(0.55, 1.0, sh);
+  // energy lost by the single-scatter split-sum BRDF on rough surfaces comes back as multi-scatter (Fdez-Agüera 2019)
+  vec3 msc = 1.0 + f0 * (1.0 / max(ab.x + ab.y, 0.1) - 1.0);
+  col += (diff * irr * ao + pref * (f0 * ab.x + ab.y) * msc * specOcc * horizon * horizon * mix(0.55, 1.0, sh)) * saoIndirect(P);
   // rim light: backlit silhouettes catch the realm's glow so bodies and edges read in the dark
   // (only where the surface faces away from the key light, so lit surfaces keep their colour)
   float backlit = clamp(dot(N, -u_keyDir) * 0.5 + 0.5, 0.0, 1.0);
@@ -146,6 +186,13 @@ uniform mediump sampler2DArray u_arm;
 uniform vec3 u_matAvg[24];
 uniform float u_texOn;
 struct Surf { vec3 albedo; vec3 n; float rough; float metal; float ao; };
+// procedural micro relief at two finer scales, for the close-up detail the 512 px texture sets cannot carry
+float microH(vec3 q){ return vnoise3(q * 9.0) * 0.65 + vnoise3(q * 27.0) * 0.35; }
+vec3 microGrad(vec3 q){
+  const float e = 0.035;
+  float h = microH(q);
+  return vec3(microH(q + vec3(e, 0.0, 0.0)) - h, microH(q + vec3(0.0, e, 0.0)) - h, microH(q + vec3(0.0, 0.0, e)) - h) / e;
+}
 // triplanar sample of one material layer at p (world or object units) with geometric normal n.
 // Normals use Ben Golus' whiteout blend.
 Surf triSample(float layer, vec3 p, vec3 n, float scale){
@@ -161,6 +208,10 @@ Surf triSample(float layer, vec3 p, vec3 n, float scale){
   ty = vec3(ty.xy + n.xz, abs(ty.z) * n.y);
   tz = vec3(tz.xy + n.xy, abs(tz.z) * n.z);
   s.n = normalize(tx.zyx * w.x + ty.xzy * w.y + tz.xyz * w.z);
+  // the detail fades out as its texels shrink below a pixel, so it never shimmers at a distance
+  float footprint = length(fwidth(p));
+  float fade = u_microOn * clamp(1.0 - footprint * 14.0, 0.0, 1.0);
+  if (fade > 0.0) { vec3 g = microGrad(p); s.n = normalize(s.n - (g - dot(g, s.n) * s.n) * 0.04 * fade); }
   s.albedo = a; // the albedo array is sRGB, so the sampler already returns linear colour
   s.ao = m.r; s.rough = m.g; s.metal = m.b;
   return s;
@@ -674,149 +725,6 @@ void main(){
 }`;
 
 // ------------------------------------------------------------------ screen passes
-// Half-resolution volumetric fog march (key-light shadows -> god rays, point-light scattering, drifting noise,
-// holes punched by blasts and the hero) plus SSAO. Writes fog (inscatter, transmittance) and (AO, linear depth).
-export const VOLFOG_FS = `#version 300 es
-precision highp float;
-in vec2 v_uv;
-uniform highp sampler2D u_depth;
-uniform highp sampler2DShadow u_shadow;
-uniform mat4 u_shadowVP;
-uniform float u_shadowOn;
-uniform mat4 u_invVP;
-uniform mat4 u_vpMat;
-uniform vec3 u_camFwd;
-uniform vec3 u_camPos;
-uniform vec2 u_nearFar;
-uniform vec2 u_res;
-uniform vec3 u_keyDir;
-uniform vec3 u_keyCol;
-uniform vec3 u_fogCol;
-uniform vec3 u_scatCol;
-uniform float u_density;
-uniform float u_heightFall;
-uniform float u_baseH;
-uniform float u_aniso;
-uniform float u_time;
-uniform vec2 u_wind;
-uniform vec4 u_holes[8];
-uniform int u_nHoles;
-uniform vec4 u_lightPos[${MAXL}];
-uniform vec4 u_lightCol[${MAXL}];
-uniform int u_nLights;
-uniform int u_steps;
-uniform float u_maxDist;
-uniform float u_aoOn;
-uniform float u_aoRadius;
-uniform float u_flash;
-layout(location=0) out vec4 o_fog;
-layout(location=1) out vec4 o_aux;
-${COMMON}
-float linDepth(float d){ float z = d * 2.0 - 1.0; return 2.0 * u_nearFar.x * u_nearFar.y / (u_nearFar.y + u_nearFar.x - z * (u_nearFar.y - u_nearFar.x)); }
-vec3 worldAt(vec2 uv, float d){ vec4 p = u_invVP * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); return p.xyz / p.w; }
-float density(vec3 p){
-  float h = exp(-max(p.y - u_baseH, -4.0) * u_heightFall);
-  vec3 q = p * 0.045 + vec3(u_wind.x, 0.0, u_wind.y) * u_time * 0.04;
-  float n = vnoise3(q) * 0.65 + vnoise3(q * 2.7 + 7.0) * 0.35;
-  float d = u_density * h * (0.45 + 0.9 * n);
-  for (int i = 0; i < 8; i++) {
-    if (i >= u_nHoles) break;
-    float k = length(p - u_holes[i].xyz) / u_holes[i].w;
-    d *= mix(1.0, smoothstep(0.35, 1.0, k), 0.85);
-  }
-  return d;
-}
-float phase(float c){ float g = u_aniso; return (1.0 - g*g) / (4.0 * PI * pow(1.0 + g*g - 2.0*g*c, 1.5)); }
-float shadowP(vec3 p){
-  if (u_shadowOn < 0.5) return 1.0;
-  vec4 s = u_shadowVP * vec4(p, 1.0); vec3 q = s.xyz / s.w * 0.5 + 0.5;
-  if (q.x < 0.0 || q.x > 1.0 || q.y < 0.0 || q.y > 1.0 || q.z > 1.0) return 1.0;
-  return texture(u_shadow, vec3(q.xy, q.z - 0.002));
-}
-void main(){
-  vec2 uv = v_uv;
-  float d = texture(u_depth, uv).r;
-  float sky = step(0.99999, d);
-  vec3 wp = worldAt(uv, sky > 0.5 ? 0.9999 : d);
-  vec3 ro = u_camPos;
-  vec3 rd = wp - ro; float dist = length(rd); rd /= dist;
-  if (sky > 0.5) dist = 600.0;
-  float lin = linDepth(d);
-  // ---- SSAO from the depth buffer (view-space normal reconstructed from neighbours)
-  float ao = 1.0;
-  if (u_aoOn > 0.5 && sky < 0.5 && lin < 60.0) {
-    vec2 px = 1.0 / u_res;
-    vec3 wx = worldAt(uv + vec2(px.x, 0.0), texture(u_depth, uv + vec2(px.x, 0.0)).r);
-    vec3 wy = worldAt(uv + vec2(0.0, px.y), texture(u_depth, uv + vec2(0.0, px.y)).r);
-    vec3 n = normalize(cross(wx - wp, wy - wp));
-    if (dot(n, u_camPos - wp) < 0.0) n = -n;
-    vec3 t = normalize(cross(n, abs(n.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
-    vec3 b = cross(n, t);
-    float occ = 0.0;
-    float rot = ign(gl_FragCoord.xy) * 6.2831;
-    float rad = u_aoRadius;
-    for (int i = 0; i < 10; i++) {
-      float fi = float(i) + 0.5;
-      float ang = rot + fi * 2.399;
-      float rr = sqrt(fi / 10.0);
-      vec3 sp = wp + (t * cos(ang) * rr + b * sin(ang) * rr + n * (0.15 + 0.6 * fract(fi * 0.618))) * rad;
-      vec4 sc = u_vpMat * vec4(sp, 1.0);
-      vec2 suv = sc.xy / sc.w * 0.5 + 0.5;
-      float sceneZ = linDepth(texture(u_depth, suv).r);
-      float sampZ = dot(sp - u_camPos, u_camFwd);
-      float diff = sampZ - sceneZ;
-      occ += step(0.03, diff) * smoothstep(0.0, 1.0, rad / max(abs(lin - sceneZ), 1e-3));
-    }
-    ao = clamp(1.0 - occ / 10.0 * 1.25, 0.0, 1.0);
-  }
-  // ---- fog march
-  float jitter = ign(gl_FragCoord.xy + fract(u_time * 7.0) * 61.0);
-  float marchD = min(dist, u_maxDist);
-  int N = u_steps;
-  float stepL = marchD / float(N);
-  vec3 L = vec3(0.0);
-  float T = 1.0;
-  float cosT = dot(rd, u_keyDir);
-  float ph = phase(cosT);
-  vec3 keyC = u_keyCol * (1.0 + u_flash * 2.0);
-  vec3 amb = u_fogCol * (1.0 + u_flash * 1.2);
-  for (int i = 0; i < 48; i++) {
-    if (i >= N) break;
-    float t = (float(i) + jitter) * stepL;
-    vec3 p = ro + rd * t;
-    float den = density(p);
-    if (den < 1e-5) continue;
-    vec3 inS = amb + keyC * u_scatCol * ph * 1.3 * shadowP(p);
-    for (int j = 0; j < ${MAXL}; j++) {
-      if (j >= u_nLights) break;
-      vec3 lv = u_lightPos[j].xyz - p;
-      float ld2 = dot(lv, lv);
-      float r2 = u_lightPos[j].w * u_lightPos[j].w;
-      if (ld2 > r2) continue;
-      inS += u_lightCol[j].rgb * min(u_lightCol[j].a, 3.0) * (1.0 - ld2 / r2) / (ld2 * 0.6 + 1.0) * 0.25;
-    }
-    float ext = den * stepL;
-    float tr = exp(-ext);
-    L += T * inS * (1.0 - tr);
-    T *= tr;
-    if (T < 0.01) break;
-  }
-  // analytic tail beyond the march (height fog integral along the rest of the ray)
-  if (dist > marchD && T > 0.01) {
-    float rest = dist - marchD;
-    vec3 p0 = ro + rd * marchD;
-    float k = u_heightFall;
-    float hd = rd.y * k;
-    float f0 = exp(-max(p0.y - u_baseH, -4.0) * k);
-    float od = u_density * 0.75 * f0 * (abs(hd) > 1e-4 ? (1.0 - exp(-hd * rest)) / hd : rest);
-    float tr = exp(-od);
-    L += T * (amb + keyC * u_scatCol * ph * 0.6) * (1.0 - tr);
-    T *= tr;
-  }
-  o_fog = vec4(L, T);
-  o_aux = vec4(ao, lin, 0.0, 1.0);
-}`;
-
 // Full-res: depth-aware upsample of fog + AO onto the HDR scene (blend ONE, SRC_ALPHA).
 export const FOG_APPLY_FS = `#version 300 es
 precision highp float;
@@ -1115,12 +1023,17 @@ export const LOOKS = {
   },
 };
 
-/** Graphics quality presets for the cinematic pack. */
+/**
+ * Graphics quality presets for the cinematic pack.
+ * grid: voxel fog grid height and depth slices (the width follows the screen aspect), fogSteps: march steps per pixel,
+ * aoSlices x aoSteps: horizon directions and samples per side for ambient occlusion.
+ * foliage: tuft density multiplier for the grass and the other realm growths (1 is the original density).
+ */
 export const QUALITY = {
-  low: { scale: 0.6, shadow: 1024, fogSteps: 12, ao: false, fogLights: false, bloomLevels: 4, fxaa: true, foliage: 1, precip: 2500, dof: false, texSize: 256 },
-  medium: { scale: 0.75, shadow: 2048, fogSteps: 18, ao: true, fogLights: false, bloomLevels: 5, fxaa: true, foliage: 1.4, precip: 5000, dof: true, texSize: 512 },
-  high: { scale: 1, shadow: 2048, fogSteps: 26, ao: true, fogLights: true, bloomLevels: 6, fxaa: true, foliage: 1.8, precip: 8000, dof: true, texSize: 512 },
-  ultra: { scale: 1, shadow: 4096, fogSteps: 36, ao: true, fogLights: true, bloomLevels: 6, fxaa: true, foliage: 2.2, precip: 12000, dof: true, texSize: 512 },
+  low: { scale: 0.6, shadow: 1024, grid: [45, 24], fogSteps: 16, ao: false, aoSlices: 0, aoSteps: 0, fogLights: false, bloomLevels: 4, fxaa: true, foliage: 1.5, precip: 2500, dof: false, texSize: 256 },
+  medium: { scale: 0.75, shadow: 2048, grid: [68, 36], fogSteps: 20, ao: true, aoSlices: 2, aoSteps: 3, fogLights: false, bloomLevels: 5, fxaa: true, foliage: 2.5, precip: 5000, dof: true, texSize: 512 },
+  high: { scale: 1, shadow: 2048, grid: [90, 48], fogSteps: 24, ao: true, aoSlices: 3, aoSteps: 4, fogLights: true, bloomLevels: 6, fxaa: true, foliage: 4, precip: 8000, dof: true, texSize: 512 },
+  ultra: { scale: 1, shadow: 4096, grid: [135, 64], fogSteps: 32, ao: true, aoSlices: 4, aoSteps: 5, fogLights: true, bloomLevels: 6, fxaa: true, foliage: 5, precip: 12000, dof: true, texSize: 512 },
 };
 
 // Weapon ribbon trails: a camera-independent strip between blade tip and base, brightest at the edge.

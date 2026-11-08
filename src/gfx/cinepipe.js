@@ -1,18 +1,27 @@
 // The "Abyssal Cinematic" frame: shadow map -> HDR scene (sky, PBR terrain/props/characters, foliage, decals) ->
-// half-res volumetric fog + SSAO -> fog/AO apply -> soft particles and precipitation -> bloom -> depth of field ->
-// ACES composite with grading and lens effects -> FXAA. Owned by the Renderer when a cinematic style is active.
+// voxel (froxel) volumetric fog and horizon AO at half resolution -> fog/AO apply -> soft particles and
+// precipitation -> bloom -> depth of field -> ACES composite with grading and lens effects -> FXAA.
+// Owned by the Renderer when a cinematic style is active.
 import * as S from './shaders.js';
 import * as C from './cinematic.js';
+import * as V from './volumetric.js';
 import { Mannequin } from './skinned.js';
 import { mat4LookAt, mat4Ortho, mat4Mul, mat4Invert } from '../core/math.js';
 import { AdaptiveScaler } from './adaptive.js';
+import { MEADOW_N } from '../game/foliage.js';
 
 // highlights above this HDR value feed the bloom; everything else stays sharp
 const BLOOM_THRESHOLD = 1.2;
 // strength of the anamorphic lens streaks (per-look override: look.streak)
 const STREAK = 0.35;
+// world radius of the horizon AO search, metres
+const AO_RADIUS = 0.75;
+// fog extinction per metre inside the meadow's ground mist (full meadow) and inside the pockets around push sources
+const MIST_K = 0.2, DENSE_K = 0.5;
 
 const U_ALB = 0, U_NRM = 1, U_ARM = 2, U_SHADOW = 3, U_ENV = 4, U_BONES = 5, U_DEPTH = 6, U_MISC = 7;
+// units for the voxel grid, its history and the AO history (above the material and depth units)
+const U_GRID = 8, U_HIST3 = 9, U_AORAW = 10, U_AOHIST = 11, U_MEADOW = 12, U_SAO = 13;
 
 function tex2D(gl, w, h, ifmt, fmt, type, filter, wrap = gl.CLAMP_TO_EDGE) {
   const t = gl.createTexture();
@@ -55,7 +64,10 @@ export class CinePipe {
     this.sky = new P(gl, S.FS_TRI_VS, C.CINE_SKY_FS);
     this.quad = new P(gl, S.QUAD_VS, C.CINE_QUAD_FS);
     this.precipP = new P(gl, C.PRECIP_VS, C.PRECIP_FS);
-    this.fogP = new P(gl, S.FS_TRI_VS, C.VOLFOG_FS);
+    this.inject = new P(gl, S.FS_TRI_VS, V.FROXEL_INJECT_FS);
+    this.march = new P(gl, S.FS_TRI_VS, V.FROXEL_MARCH_FS);
+    this.gtao = new P(gl, S.FS_TRI_VS, V.GTAO_FS);
+    this.aoTemporal = new P(gl, S.FS_TRI_VS, V.AO_TEMPORAL_FS);
     this.applyP = new P(gl, S.FS_TRI_VS, C.FOG_APPLY_FS);
     this.downP = new P(gl, S.FS_TRI_VS, C.BLOOM_DOWN_FS);
     this.upP = new P(gl, S.FS_TRI_VS, C.BLOOM_UP_FS);
@@ -81,6 +93,22 @@ export class CinePipe {
     this.lightView = new Float32Array(16);
     this.lightProj = new Float32Array(16);
     this.invVP = new Float32Array(16);
+    // voxel fog grid (two 3D textures, ping-ponged) and the camera state the reprojection needs
+    this.grid = null;
+    this.gridLast = 0;
+    // ground-mist map (R = meadow density, G = ground height), its centre and half size in metres
+    this.meadowTex = tex2D(gl, MEADOW_N, MEADOW_N, gl.RG16F, gl.RG, gl.FLOAT, gl.LINEAR);
+    this.meadowC = [0, 0];
+    this.meadowH = 0;
+    this.gridHist = false;
+    this.frameNo = 0;
+    this.prevVP = new Float32Array(16);
+    this.prevCam = new Float32Array(3);
+    this.prevFwd = new Float32Array([0, 0, 1]);
+    // horizon AO: raw estimate and two accumulated targets (ping-ponged)
+    this.aoIdx = 0;
+    this.aoCur = 0;
+    this.aoHist = false;
     this.keyDir = [0, 1, 0];
     this.keyCol = [1, 1, 1];
     this.envTex = {};
@@ -282,9 +310,15 @@ export class CinePipe {
     this.depthCopyFB = F([], this.depthCopy);
     const hw = Math.max(1, w >> 1), hh = Math.max(1, h >> 1);
     this.hw = hw; this.hh = hh;
+    // fog march result: (in-scatter, transmittance)
     this.fogTex = T(hw, hh, gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT, gl.LINEAR);
-    this.auxTex = T(hw, hh, gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT, gl.NEAREST);
-    this.fogFB = F([this.fogTex, this.auxTex]);
+    this.fogFB = F([this.fogTex]);
+    // AO: (visibility, view depth), raw and accumulated over time
+    this.aoRawTex = T(hw, hh, gl.RG16F, gl.RG, gl.HALF_FLOAT, gl.NEAREST);
+    this.aoRawFB = F([this.aoRawTex]);
+    this.aoTex = [T(hw, hh, gl.RG16F, gl.RG, gl.HALF_FLOAT, gl.LINEAR), T(hw, hh, gl.RG16F, gl.RG, gl.HALF_FLOAT, gl.LINEAR)];
+    this.aoFB = [F([this.aoTex[0]]), F([this.aoTex[1]])];
+    this.aoHist = false;
     this.bloom = [];
     let bw = hw, bh = hh;
     for (let i = 0; i < this.quality.bloomLevels && bw >= 4 && bh >= 4; i++) {
@@ -296,6 +330,111 @@ export class CinePipe {
     this.dofFB = F([this.dofTex]);
     this.ldrTex = T(w, h, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR);
     this.ldrFB = F([this.ldrTex]);
+  }
+
+  // ------------------------------------------------------------ voxel fog
+  /** Grid storage for the quality preset. A size change drops the grid history (the layout no longer matches). */
+  _gridTargets(gx, gy, gz) {
+    const gl = this.gl;
+    const g = this.grid;
+    if (g && g.gx === gx && g.gy === gy && g.gz === gz) return;
+    if (g) { gl.deleteTexture(g.tex[0]); gl.deleteTexture(g.tex[1]); gl.deleteFramebuffer(g.fb); }
+    const mk = () => {
+      const t = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_3D, t);
+      gl.texStorage3D(gl.TEXTURE_3D, 1, gl.RGBA16F, gx, gy, gz);
+      gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+      return t;
+    };
+    this.grid = { gx, gy, gz, tex: [mk(), mk()], fb: gl.createFramebuffer() };
+    this.gridLast = 0;
+    this.gridHist = false;
+  }
+
+  /** Upload the ground-mist map centred on (cx, cz) covering +-half metres. */
+  setMeadow(data, cx, cz, half) {
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.meadowTex);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, MEADOW_N, MEADOW_N, gl.RG, gl.FLOAT, data);
+    this.meadowC[0] = cx; this.meadowC[1] = cz; this.meadowH = half;
+  }
+
+  /** Fog terms shared by the grid fill and the march: realm colour, density, height falloff and the sun. */
+  _fogLook(p, look) {
+    const gl = this.gl, R = this.R;
+    gl.uniform3fv(p.u.u_keyDir, this.keyDir);
+    gl.uniform3fv(p.u.u_keyCol, this.keyCol);
+    const fa = look.fogAmb;
+    gl.uniform3f(p.u.u_fogCol, look.fogCol[0] * fa, look.fogCol[1] * fa, look.fogCol[2] * fa);
+    gl.uniform3fv(p.u.u_scatCol, look.scatCol);
+    gl.uniform1f(p.u.u_density, look.density * (R.fogMul ?? 1));
+    gl.uniform1f(p.u.u_heightFall, look.heightFall);
+    gl.uniform1f(p.u.u_baseH, look.baseH);
+    gl.uniform1f(p.u.u_aniso, look.aniso);
+    gl.uniform1f(p.u.u_flash, this.flash);
+  }
+
+  /** Fills this frame's grid: one draw per slice, each blending its froxels with the reprojected previous grid. */
+  _fogGrid(look, q) {
+    const gl = this.gl, R = this.R;
+    const [gy, gz] = q.grid;
+    const gx = V.gridWidth(gy, R.aspect);
+    this._gridTargets(gx, gy, gz);
+    const g = this.grid;
+    // a camera jump (respawn, realm change) invalidates the history
+    const moved = Math.hypot(R.camPos[0] - this.prevCam[0], R.camPos[1] - this.prevCam[1], R.camPos[2] - this.prevCam[2]);
+    const wr = 1 - this.gridLast, rd = this.gridLast;
+    const p = this.inject.use();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, g.fb);
+    gl.viewport(0, 0, gx, gy);
+    gl.activeTexture(gl.TEXTURE0 + U_HIST3); gl.bindTexture(gl.TEXTURE_3D, g.tex[rd]);
+    gl.uniform1i(p.u.u_hist, U_HIST3);
+    gl.activeTexture(gl.TEXTURE0 + U_SHADOW); gl.bindTexture(gl.TEXTURE_2D, this.shadowTex);
+    gl.uniform1i(p.u.u_shadow, U_SHADOW);
+    gl.uniform3f(p.u.u_gridDims, gx, gy, gz);
+    gl.uniform1f(p.u.u_near, V.FROXEL_NEAR);
+    gl.uniform1f(p.u.u_far, V.FROXEL_FAR);
+    gl.uniform1f(p.u.u_jit, V.frameJitter(this.frameNo));
+    gl.uniformMatrix4fv(p.u.u_invVP, false, this.invVP);
+    gl.uniform3fv(p.u.u_camPos, R.camPos);
+    gl.uniform3fv(p.u.u_camFwd, R.camFwd);
+    gl.uniformMatrix4fv(p.u.u_prevVP, false, this.prevVP);
+    gl.uniform3fv(p.u.u_prevCamPos, this.prevCam);
+    gl.uniform3fv(p.u.u_prevCamFwd, this.prevFwd);
+    gl.uniform1f(p.u.u_histOn, this.gridHist && moved < 6 ? 1 : 0);
+    gl.uniform1f(p.u.u_blend, 0.1);
+    this._fogLook(p, look);
+    gl.uniform1f(p.u.u_time, R.time);
+    gl.uniform2fv(p.u.u_wind, R.wind);
+    gl.uniform4fv(p.u.u_holes, this.holes);
+    gl.uniform1i(p.u.u_nHoles, this.nHoles);
+    gl.uniform4fv(p.u.u_lightPos, R.lightPos);
+    gl.uniform4fv(p.u.u_lightCol, R.lightCol);
+    gl.uniform1i(p.u.u_nLights, q.fogLights ? Math.min(this.nl, 8) : 0);
+    gl.uniformMatrix4fv(p.u.u_shadowVP, false, this.shadowVP);
+    gl.uniform1f(p.u.u_shadowOn, 1);
+    // dense mist: the meadow's ground layer and the pockets around every push source
+    gl.activeTexture(gl.TEXTURE0 + U_MEADOW); gl.bindTexture(gl.TEXTURE_2D, this.meadowTex);
+    gl.uniform1i(p.u.u_meadow, U_MEADOW);
+    gl.uniform2f(p.u.u_meadowC, this.meadowC[0], this.meadowC[1]);
+    gl.uniform1f(p.u.u_meadowH, this.meadowH);
+    gl.uniform1f(p.u.u_mistK, MIST_K);
+    gl.uniform4fv(p.u.u_dense, R.push);
+    gl.uniform1fv(p.u.u_denseY, R.pushY);
+    gl.uniform1i(p.u.u_nDense, R.nPush);
+    gl.uniform1f(p.u.u_denseK, DENSE_K);
+    gl.bindVertexArray(R.emptyVao);
+    for (let k = 0; k < gz; k++) {
+      gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, g.tex[wr], 0, k);
+      gl.uniform1f(p.u.u_slice, k);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    this.gridLast = wr;
+    this.gridHist = true;
   }
 
   // ------------------------------------------------------------ per-frame setup
@@ -352,6 +491,15 @@ export class CinePipe {
     gl.uniform3fv(p.u.u_matAvg, this.matAvg);
     gl.uniform1f(p.u.u_texOn, this.texOn);
     gl.uniform1f(p.u.u_tintMix, look.tintMix);
+    // screen-space history: last frame's horizon AO and depth, reprojected with last frame's matrix
+    gl.uniform1i(p.u.u_sao, U_SAO);
+    gl.uniform1i(p.u.u_depthPrev, U_DEPTH);
+    gl.uniformMatrix4fv(p.u.u_prevVP, false, this.prevVP);
+    gl.uniform2f(p.u.u_nearFar, R.near, R.far);
+    gl.uniform1f(p.u.u_histOn, this.aoHist ? 1 : 0);
+    gl.uniform1f(p.u.u_saoAmt, this.quality.ao ? 0.85 : 0);
+    gl.uniform1f(p.u.u_contactOn, this.quality.ao ? 1 : 0);
+    gl.uniform1f(p.u.u_microOn, this.quality.ao ? 1 : 0);
     gl.uniform1i(p.u.u_albedo, U_ALB);
     gl.uniform1i(p.u.u_normal, U_NRM);
     gl.uniform1i(p.u.u_arm, U_ARM);
@@ -366,6 +514,7 @@ export class CinePipe {
     gl.activeTexture(gl.TEXTURE0 + U_ARM); gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.armArr);
     gl.activeTexture(gl.TEXTURE0 + U_SHADOW); gl.bindTexture(gl.TEXTURE_2D, this.shadowTex);
     gl.activeTexture(gl.TEXTURE0 + U_ENV); gl.bindTexture(gl.TEXTURE_2D, this.curEnv.tex);
+    gl.activeTexture(gl.TEXTURE0 + U_SAO); gl.bindTexture(gl.TEXTURE_2D, this.aoTex[1 - this.aoIdx]);
     gl.activeTexture(gl.TEXTURE0 + U_DEPTH); gl.bindTexture(gl.TEXTURE_2D, this.depthCopy);
     gl.activeTexture(gl.TEXTURE0);
   }
@@ -510,46 +659,71 @@ export class CinePipe {
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
 
-    // ---- 4. volumetric fog + SSAO at half resolution
+    // ---- 4. voxel fog grid, the fog march and horizon AO at half resolution
+    this.frameNo++;
+    const jit = V.frameJitter(this.frameNo);
     gl.disable(gl.DEPTH_TEST);
+    mat4Invert(this.invVP, R.vp);
+    this._fogGrid(look, q);
+    const g = this.grid;
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fogFB);
     gl.viewport(0, 0, this.hw, this.hh);
-    mat4Invert(this.invVP, R.vp);
-    p = this.fogP.use();
+    p = this.march.use();
     gl.activeTexture(gl.TEXTURE0 + U_DEPTH); gl.bindTexture(gl.TEXTURE_2D, this.depthCopy);
     gl.uniform1i(p.u.u_depth, U_DEPTH);
-    gl.uniform1i(p.u.u_shadow, U_SHADOW);
-    gl.uniformMatrix4fv(p.u.u_shadowVP, false, this.shadowVP);
-    gl.uniform1f(p.u.u_shadowOn, 1);
+    gl.activeTexture(gl.TEXTURE0 + U_GRID); gl.bindTexture(gl.TEXTURE_3D, g.tex[this.gridLast]);
+    gl.uniform1i(p.u.u_grid, U_GRID);
     gl.uniformMatrix4fv(p.u.u_invVP, false, this.invVP);
-    gl.uniformMatrix4fv(p.u.u_vpMat, false, R.vp);
-    gl.uniform3fv(p.u.u_camFwd, R.camFwd);
     gl.uniform3fv(p.u.u_camPos, R.camPos);
-    gl.uniform2f(p.u.u_nearFar, R.near, R.far);
-    gl.uniform2f(p.u.u_res, this.hw, this.hh);
-    gl.uniform3fv(p.u.u_keyDir, this.keyDir);
-    gl.uniform3fv(p.u.u_keyCol, this.keyCol);
-    const fa = look.fogAmb;
-    gl.uniform3f(p.u.u_fogCol, look.fogCol[0] * fa, look.fogCol[1] * fa, look.fogCol[2] * fa);
-    gl.uniform3fv(p.u.u_scatCol, look.scatCol);
-    gl.uniform1f(p.u.u_density, look.density * (R.fogMul ?? 1));
-    gl.uniform1f(p.u.u_heightFall, look.heightFall);
-    gl.uniform1f(p.u.u_baseH, look.baseH);
-    gl.uniform1f(p.u.u_aniso, look.aniso);
-    gl.uniform1f(p.u.u_time, R.time);
-    gl.uniform2fv(p.u.u_wind, R.wind);
-    gl.uniform4fv(p.u.u_holes, this.holes);
-    gl.uniform1i(p.u.u_nHoles, this.nHoles);
-    gl.uniform4fv(p.u.u_lightPos, R.lightPos);
-    gl.uniform4fv(p.u.u_lightCol, R.lightCol);
-    gl.uniform1i(p.u.u_nLights, q.fogLights ? Math.min(this.nl, 8) : 0);
+    gl.uniform3fv(p.u.u_camFwd, R.camFwd);
+    gl.uniform1f(p.u.u_near, V.FROXEL_NEAR);
+    gl.uniform1f(p.u.u_far, V.FROXEL_FAR);
+    gl.uniform1f(p.u.u_jit, jit);
     gl.uniform1i(p.u.u_steps, q.fogSteps);
-    gl.uniform1f(p.u.u_maxDist, 70);
-    gl.uniform1f(p.u.u_aoOn, q.ao ? 1 : 0);
-    gl.uniform1f(p.u.u_aoRadius, 0.7);
-    gl.uniform1f(p.u.u_flash, this.flash);
+    this._fogLook(p, look);
     gl.bindVertexArray(R.emptyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    // horizon AO (raw), then the temporal filter into the accumulated target
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.aoRawFB);
+    gl.viewport(0, 0, this.hw, this.hh);
+    p = this.gtao.use();
+    gl.activeTexture(gl.TEXTURE0 + U_DEPTH); gl.bindTexture(gl.TEXTURE_2D, this.depthCopy);
+    gl.uniform1i(p.u.u_depth, U_DEPTH);
+    gl.uniformMatrix4fv(p.u.u_invVP, false, this.invVP);
+    gl.uniform3fv(p.u.u_camPos, R.camPos);
+    gl.uniform3fv(p.u.u_camRight, R.camRight);
+    gl.uniform3fv(p.u.u_camUp, R.camUp);
+    gl.uniform3fv(p.u.u_camFwd, R.camFwd);
+    gl.uniform2f(p.u.u_nearFar, R.near, R.far);
+    gl.uniform2f(p.u.u_full, w, h);
+    gl.uniform2f(p.u.u_res, this.hw, this.hh);
+    gl.uniform1f(p.u.u_focalPx, (this.hh * 0.5) / Math.tan(R.fov * 0.5));
+    gl.uniform1f(p.u.u_radius, AO_RADIUS);
+    gl.uniform1i(p.u.u_slices, q.aoSlices);
+    gl.uniform1i(p.u.u_steps, q.aoSteps);
+    gl.uniform1f(p.u.u_frame, jit);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    const ai = this.aoIdx, ah = 1 - ai;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.aoFB[ai]);
+    gl.viewport(0, 0, this.hw, this.hh);
+    p = this.aoTemporal.use();
+    gl.activeTexture(gl.TEXTURE0 + U_AORAW); gl.bindTexture(gl.TEXTURE_2D, this.aoRawTex);
+    gl.uniform1i(p.u.u_raw, U_AORAW);
+    gl.activeTexture(gl.TEXTURE0 + U_AOHIST); gl.bindTexture(gl.TEXTURE_2D, this.aoTex[ah]);
+    gl.uniform1i(p.u.u_hist, U_AOHIST);
+    gl.activeTexture(gl.TEXTURE0 + U_DEPTH); gl.bindTexture(gl.TEXTURE_2D, this.depthCopy);
+    gl.uniform1i(p.u.u_depth, U_DEPTH);
+    gl.uniformMatrix4fv(p.u.u_invVP, false, this.invVP);
+    gl.uniformMatrix4fv(p.u.u_prevVP, false, this.prevVP);
+    gl.uniform3fv(p.u.u_prevCamPos, this.prevCam);
+    gl.uniform3fv(p.u.u_prevCamFwd, this.prevFwd);
+    gl.uniform1f(p.u.u_histOn, this.aoHist ? 1 : 0);
+    gl.uniform1f(p.u.u_blend, 0.15);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    this.aoCur = ai;
+    this.aoIdx = ah;
+    this.aoHist = true;
 
     // ---- 5. apply fog + AO to the scene
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.sceneFB);
@@ -559,12 +733,12 @@ export class CinePipe {
     p = this.applyP.use();
     gl.activeTexture(gl.TEXTURE0 + U_MISC); gl.bindTexture(gl.TEXTURE_2D, this.fogTex);
     gl.uniform1i(p.u.u_fog, U_MISC);
-    gl.activeTexture(gl.TEXTURE0 + U_BONES); gl.bindTexture(gl.TEXTURE_2D, this.auxTex);
+    gl.activeTexture(gl.TEXTURE0 + U_BONES); gl.bindTexture(gl.TEXTURE_2D, this.aoTex[ai]);
     gl.uniform1i(p.u.u_aux, U_BONES);
     gl.uniform1i(p.u.u_depth, U_DEPTH);
     gl.uniform2f(p.u.u_nearFar, R.near, R.far);
     gl.uniform2f(p.u.u_lowRes, this.hw, this.hh);
-    gl.uniform1f(p.u.u_aoAmt, q.ao ? 0.85 : 0);
+    gl.uniform1f(p.u.u_aoAmt, 0); // ambient occlusion is applied to indirect light in the lit shaders
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
     // ---- 6. particles + precipitation (soft, depth-tested, no depth writes)
@@ -684,6 +858,10 @@ export class CinePipe {
     gl.uniform1f(p.u.u_on, q.fxaa ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.activeTexture(gl.TEXTURE0);
+    // the next frame reprojects its fog grid and AO history with this frame's camera
+    this.prevVP.set(R.vp);
+    this.prevCam.set(R.camPos);
+    this.prevFwd.set(R.camFwd);
   }
 
   _quadUniforms(qp, env, w, h) {
