@@ -213,6 +213,7 @@ export class Renderer {
     this.grassToon = new Program(gl, S.GRASS_VS, T.TOON_LIT_FS);
     this.foliage = null;
     this.push = new Float32Array(16 * 4);
+    this.pushY = new Float32Array(16); // ground height under each push source
     this.nPush = 0;
     this.wind = [0.6, 0.3];
     this.foliageFade = [0, 0, 30];

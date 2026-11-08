@@ -21,6 +21,7 @@ import { echoesForRun } from './meta.js';
 import { Weather } from './weather.js';
 import { Director } from './director.js';
 import { LOOKS } from '../gfx/cinematic.js';
+import { MEADOW_N, MEADOW_STEP } from './foliage.js';
 import { REALM_MATS } from '../gfx/materials.js';
 
 export class Game {
@@ -1260,11 +1261,14 @@ export class Game {
     const W = this.world, R = this.R, p = this.player;
     const F = W.foliage;
     if (!F) return;
+    // the graphics preset sets how dense the grass grows
+    F.setScale(R.cine && R.cine.ok ? R.cine.quality.foliage : 1);
     if (F.update(p.x, p.z) || F.dirty) { R.setFoliageInstances(F.data, F.count); F.dirty = false; }
     R.foliageFade[0] = p.x; R.foliageFade[1] = p.z; R.foliageFade[2] = F.radius;
-    const out = R.push;
+    // every source keeps its push radius, strength and ground height: the grass bends and the fog thickens around the same points
+    const out = R.push, outY = R.pushY;
     let n = 0;
-    const add = (x, z, r, s) => { if (n >= 16) return; out[n * 4] = x; out[n * 4 + 1] = z; out[n * 4 + 2] = r; out[n * 4 + 3] = s; n++; };
+    const add = (x, z, r, s) => { if (n >= 16) return; out[n * 4] = x; out[n * 4 + 1] = z; out[n * 4 + 2] = r; out[n * 4 + 3] = s; outY[n] = W.height(x, z); n++; };
     const speed = Math.hypot(p.vx, p.vz);
     if (p.alive) add(p.x, p.z, 1.1 + (p.sprinting ? 0.4 : 0), 0.8 + Math.min(0.6, speed * 0.05));
     // footstep trail: pressed blades recover over ~1.4 s
@@ -1288,6 +1292,8 @@ export class Game {
     near.sort((a, b) => a[0] - b[0]);
     for (let i = 0; i < near.length && n < 16; i++) { const e = near[i][1]; add(e.x, e.z, e.radius + 0.7, e.boss ? 1.4 : 0.9); }
     R.nPush = n;
+    // ground-mist map: rebuilt as the player moves, so the mist lies over the meadow they are crossing
+    if (R.cine && R.cine.ok && F.mapDue(p.x, p.z)) R.cine.setMeadow(F.sampleMap(p.x, p.z), p.x, p.z, (MEADOW_N * MEADOW_STEP) / 2);
     // rustle: running or dodging through dense growth throws blade bits around
     if (dt > 0 && p.alive && speed > 2.5) {
       const dens = F.density(p.x, p.z);

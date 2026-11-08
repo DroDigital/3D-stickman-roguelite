@@ -153,7 +153,7 @@ Each dimension has its own lighting, fog, sky (with a nebula and a watching ecli
 - About 27k pooled particles (sparks, blood, smoke, embers), persistent blood decals, shockwaves, lightning and up to 16 dynamic point lights.
 - **Smoke is a dithered cutout**: an ordered 4×4 screen-door with inked edges instead of a translucent blend. It thins out further around the player on screen, so fighters always read through it.
 - **Realm atmosphere** in layers: ash, embers and dust in the Ashen Hollows; bubbles, plankton and silt in the Drowned Abyss; star motes, void sparks and glyph rings in the Starless Veil; spores and blood drips in the Flesh Cathedral. Every ambient particle parts around the player and gets swept along in their wake, much harder while sprinting.
-- **Dense foliage per realm**: ash grass, kelp, crystal shards or flesh cilia. Tufts are streamed in 4 m cells around the player and drawn as one instanced batch. The vertex shader bends every blade away from the player, the last second of footsteps (which spring back), nearby enemies and blasts. Running or dodging through dense patches throws blades into the air.
+- **Dense foliage per realm**: ash grass, kelp, crystal shards or flesh cilia. Tufts are streamed in 4 m cells around the player and drawn as one instanced batch. The vertex shader bends every blade away from the player, the last second of footsteps (which spring back), nearby enemies and blasts. Running or dodging through dense patches throws blades into the air. The density follows the graphics preset (Low 1.5×, Medium 2.5×, High 4×, Ultra 5× the original growth; the tall kelp and cilia stay thinner so they never hide the hero), and the meadow carries the ground mist described under Atmosphere.
 
 **Animation**
 - The procedural stickman has FK arms and **two-bone IK legs**.
@@ -171,11 +171,13 @@ The default pack renders the game as a dark-fantasy action title:
 
 **Lighting and materials**
 - A linear HDR pipeline with physically based (GGX) shading.
-- Image-based lighting from real HDR environments (Poly Haven), with spherical-harmonic diffuse and prefiltered reflections, tinted per realm.
+- Image-based lighting from real HDR environments (Poly Haven, 1024 × 512), with spherical-harmonic diffuse and prefiltered reflections, tinted per realm.
 - Soft directional shadows from the eclipse that hangs in every sky.
 - Point lights for fire, magic and lightning.
 - PBR texture sets (Poly Haven / ambientCG) applied triplanar to the terrain and every prop: ash, sand, moon dust and flesh grounds blend into cliff rock on slopes. Bark, ruins, bone, coral, obsidian, forged steel, iron, leather and cloth are textured in object space, so moving props and weapons never swim.
 - Glowing veins in the ground (embers, bioluminescence, void light, pulsing blood).
+- **Micro relief** in the terrain and prop shading: a procedural normal at two finer scales hides the 512 px texture tiling up close and fades out before it can shimmer at a distance.
+- **Multi-scatter energy compensation** on rough metals and stone, so polished and worn surfaces do not look darker than they should.
 - Surfaces react to weather: rain darkens and glosses everything and fills puddles that ripple with every drop, while ash fall settles a grey dust on up-facing surfaces.
 
 **Characters**
@@ -183,8 +185,10 @@ The default pack renders the game as a dark-fantasy action title:
 - Each cast is dressed in PBR materials: a dark iron knight with a hood, mantle, coat tails and glowing joints and eyes, porcelain husk marionettes, flesh brutes with horns, robed choristers, and a bark-skinned shepherd.
 
 **Atmosphere**
-- A half-resolution volumetric fog march, with god rays from the shadow map, scattering from point lights and drifting noise. The hero and every blast push holes in the fog.
-- Screen-space ambient occlusion.
+- A **voxel (froxel) volumetric fog**: a view-aligned grid of density and light, filled once per frame and blended with the previous frame at its reprojected position, then marched per pixel. God rays from the shadow map, scattering from point lights and drifting noise. The hero and every blast push holes in the fog.
+- **Horizon ambient occlusion** (GTAO-style, cosine-weighted) with a temporal filter. It darkens only the indirect light, so crevices, roots and the base of props sit in shadow while sunlit surfaces keep their colour.
+- **Contact shadows**: a short screen-space march from every lit surface toward the sun, so feet, hilts and blades meet the ground with a crisp shadow that the shadow map is too coarse to show.
+- **Dense mist where the world reacts**: the meadow lays a ground mist over every grass cell (settling into the terrain, drifting in patches), and each physical source (the hero, footsteps, blasts and nearby enemies, the same ones that bend the grass) thickens the fog around it. Fresh blasts throw up the densest bursts, which fade as they settle.
 - Soft, depth-faded particles: additive sparks and embers glow in HDR, and smoke is lit.
 - A painted eclipse sky with a cloud deck, a corona and lightning flashes.
 
@@ -231,12 +235,12 @@ Menus support keyboard and gamepad navigation with focus descriptions. Settings 
 
 **Graphics presets** (Settings → Video, or `?gfx=`)
 
-| Preset | Render scale | Shadows | Fog steps | SSAO | Extras |
-| --- | --- | --- | --- | --- | --- |
-| Low | 60% | 1024 | 12 | No | — |
-| Medium | 75% | 2048 | 18 | Yes | Depth of field |
-| High (default) | 90% | 2048 | 26 | Yes | Fog lights, denser foliage |
-| Ultra | 100% | 4096 | 36 | Yes | All of the above |
+| Preset | Render scale | Shadows | Fog grid (height × slices) | Fog steps | AO (directions × steps) | Grass density | Extras |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Low | 60% | 1024 | 45 × 24 | 16 | Off | 1.5× | — |
+| Medium | 75% | 2048 | 68 × 36 | 20 | 2 × 3 | 2.5× | Depth of field |
+| High (default) | 90% | 2048 | 90 × 48 | 24 | 3 × 4 | 4× | Fog lights, denser foliage |
+| Ultra | 100% | 4096 | 135 × 64 | 32 | 4 × 5 | 5× | All of the above |
 
 Assets stream in while the title screen runs. Anything that fails to load falls back to the procedural version.
 
@@ -269,7 +273,8 @@ src/
   core/   math (column-major mat4, TRS/segment writers), seeded RNG, noise, spatial hash, input (+gamepad), WebAudio synth,
           asset loader (assets.js), sampled soundscape with reverb, 3D panning and adaptive score (soundscape.js)
   gfx/    WebGL2 renderer (instanced primitive batches, terrain, quads/decals, sky, bloom, post), toon/ink shaders + style presets, meshes, particle pools,
-          cinematic shaders + realm looks + quality presets (cinematic.js), the cinematic frame (cinepipe.js), skinned mannequin retarget (skinned.js),
+          cinematic shaders + realm looks + quality presets (cinematic.js), voxel fog and horizon AO shaders (volumetric.js), the cinematic frame (cinepipe.js),
+          skinned mannequin retarget (skinned.js),
           PBR material ids (materials.js)
   game/   game loop/orchestrator, player controller, humanoid solver + clips, anatomy (expanded skeleton + skinned bodies), legged locomotion, rig + ragdolls,
           enemies, bosses, abilities, spawner, world generation, dimensions, weapons, upgrades table, meta skill tree,
